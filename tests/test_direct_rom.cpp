@@ -17,4 +17,16 @@ int main(int argc,char** argv) {
     make(root/"Unknown.nds","XXXX");assert(DirectRom::Ds((root/"Unknown.nds").string(),root.string(),root.string(),games)==-1);
     assert(games.size()==2&&fs::file_size(root/"Game.nds")==4096);
     std::ifstream f(root/"saves/platinum.sav");std::string s;std::getline(f,s);assert(s=="existing save");
+    // A generic game (Pokemon Mystery Dungeon: Explorers of Sky): listed as known and generic, its own save name, no hack.
+    make(root/"Explorers.nds","C2SE");
+    {const int at=DirectRom::Ds((root/"Explorers.nds").string(),(root/"saves").string(),root.string(),games);
+     assert(at==2&&games[at].known&&games[at].generic&&!games[at].hack&&games[at].saveName=="pmd-explorers-of-sky.sav");
+     assert(!games[0].generic);} // (Platinum is not)
+    assert(IsGenericGame("C2SE")&&!IsGenericGame("CPUE")&&!IsGenericGame("IPGE"));
+    assert(DsSaveBytes("C2SE")==131072&&DsSaveBytes("CPUE")==524288);
+    {std::vector<unsigned char> save(131072,0x5A); // a 128 KB save is right for Explorers of Sky and wrong for a Pokemon game
+     assert(Launcher::SaveHealthOfData(save,true,true,DsSaveBytes("C2SE")).state==1);
+     assert(Launcher::SaveHealthOfData(save,true,true).state==2);
+     save.assign(524288,0x5A);assert(Launcher::SaveHealthOfData(save,true,true).state==1);
+     save.assign(131072,0xFF);assert(Launcher::SaveHealthOfData(save,true,true,DsSaveBytes("C2SE")).state==2);} // (blank)
 }
