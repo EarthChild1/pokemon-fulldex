@@ -17,6 +17,8 @@ struct Layout
 {
     LayoutMode mode = LayoutMode::Merged;
     bool swapped = false; // in Hybrid, makes the bottom screen the large one
+    bool fill = false;    // in Hybrid, the large screen is drawn at 16:9 (stretched from 4:3) and the small one
+                          // sits in the strip beside it, level with its middle (a game with no widescreen of its own)
 };
 
 inline Layout LayoutFromName(const std::string& n)
@@ -59,11 +61,12 @@ inline void LayoutRects(const Layout& l, int winW, int winH, SDL_Rect rects[2])
         // one sits beside it in the leftover strip; if that strip is too thin to be
         // readable, it is drawn over the lower right corner of the large screen instead.
         int big = l.swapped ? 1 : 0;
-        int bh = winH, bw = bh * 4 / 3;
+        const int aw = l.fill ? 16 : 4, ah = l.fill ? 9 : 3; // the large screen's shape
+        int bh = winH, bw = bh * aw / ah;
         if (bw > winW)
         {
             bw = winW;
-            bh = bw * 3 / 4;
+            bh = bw * ah / aw;
         }
         int strip = winW - bw;
         int sw, sh, bx, sx, sy;
@@ -73,7 +76,8 @@ inline void LayoutRects(const Layout& l, int winW, int winH, SDL_Rect rects[2])
             sh = sw * 3 / 4;
             bx = (winW - bw - sw) / 2;
             sx = bx + bw;
-            sy = (winH - bh) / 2 + bh - sh;
+            // (Filled: level with the middle, clear of the touch buttons at the bottom corner.)
+            sy = l.fill ? (winH - sh) / 2 : (winH - bh) / 2 + bh - sh;
         }
         else
         {

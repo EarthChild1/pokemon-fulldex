@@ -90,6 +90,7 @@
 #include "gpucompose.h"
 #include "emuthread.h"
 #include "pc_launcher.h"
+#include "activity_focus.h"
 
 // WORLD ON GPU, the widescreen world drawn by the graphics chip (melonDS/src/GPU3D_WideGpu.h):
 // deko3D on the Switch, OpenGL on a PC (EGL on Linux, WGL on Windows).
@@ -2480,6 +2481,8 @@ int main(int argc, char** argv)
     SDL_AudioDeviceID audio = 0;
     Pads pads;
     Layout layout = LayoutFromName(cfg.layout);
+    layout.fill = genericGame; // (Hybrid: the large screen at 16:9; see Layout::fill)
+    ActivityFocus activityFocus; // (a generic game's AUTO choice of the large screen)
     AndroidSecondScreen secondDisplay(!opt.headless);
     const uint8_t* singleScreenFlag = nullptr; // set by the ROM: nonzero while a scene needs both screens
     LayoutMode preSingleLayout = LayoutMode::Merged;
@@ -10499,7 +10502,25 @@ int main(int argc, char** argv)
         }
         if (sectionWithin("OVY_8", 0) && !sectionWithin("OVY_6", 0) && !sectionWithin("OVY_7", 0))
             battleSubmenuLast = rc_current_frame();
-        if (top && bot && !paused) focus.Update(top, bot, fieldNow, appBottom);
+        if (top && bot && !paused)
+        {
+            if (genericGame && focus.mode == 0)
+            {
+                // No recompiled code says where the game is played: the screen that changes the most.
+                // (The levels go to the log every two seconds, to tune it from a real session.)
+                const bool changed = activityFocus.Update(top, bot);
+                if (changed)
+                {
+                    focus.wantBottom = activityFocus.wantBottom;
+                    focus.manualFlip = false;
+                }
+                if (changed || frame % 120 == 0)
+                    fprintf(stderr, "[focus] frame %u top %.4f bottom %.4f large %s%s\n", frame, activityFocus.level[0], activityFocus.level[1],
+                            focus.wantBottom ? "bottom" : "top", changed ? " (changed)" : "");
+            }
+            else
+                focus.Update(top, bot, fieldNow, appBottom);
+        }
         sceneMark(0);
         layout.swapped = focus.Swapped();
         // While the touch cursor is in use the bottom screen has to be big enough to aim at.
