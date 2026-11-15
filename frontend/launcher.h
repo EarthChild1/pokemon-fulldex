@@ -248,6 +248,7 @@ struct Game
     std::string name;     // as shown, e.g. POKEMON BLACK 2
     std::string saveName; // e.g. black2.sav
     bool known = false;   // one of the games this program plays
+    bool generic = false; // plays on the plain emulator: no function table, no widescreen of its own
     bool hasSave = false;
     bool hasIcon = false;
     uint32_t icon[32 * 32] = {}; // ARGB, transparent where the icon is
@@ -590,6 +591,8 @@ inline const std::vector<KnownGame>& KnownGames()
         { "ADAI", "Pokemon Diamond (IT, Experimental)", "diamond-it.sav" },
         { "IPKI", "Pokemon HeartGold (IT)", "heartgold-it.sav" },
         { "CPUF", "Pokemon Platinum (FR)", "platinum-fr.sav" },
+        // Plays on the plain emulator (IsGenericGame in gamecode.h): no widescreen of its own yet.
+        { "C2SE", "Pokemon Mystery Dungeon: Explorers of Sky", "pmd-explorers-of-sky.sav" },
     };
     for (const auto& p : RegionalProfiles::profiles) list.push_back({p.code,p.name,p.save});
     return list;
@@ -694,6 +697,7 @@ inline bool ReadGame(const std::string& rom, const std::string& folder, Game& g)
     if (const KnownGame* k = Known(g.code))
     {
         g.known = true;
+        g.generic = IsGenericGame(g.code);
         g.name = k->name;
         g.saveName = k->save;
         // A hack keeps its game's code: told by the ROM not being one of the clean releases.
@@ -2645,7 +2649,7 @@ inline std::vector<HubGame> HubGames()
     std::vector<HubGame> r;
     for (const Game& g : RomList())
     {
-        if (!g.known || g.saveName.empty()) continue;
+        if (!g.known || g.generic || g.saveName.empty()) continue; // (the hub and the Mover read Pokemon saves)
         const std::string p = HubSavePath(g);
         bool dup = false;
         for (const HubGame& h : r) if (h.path == p) dup = true;

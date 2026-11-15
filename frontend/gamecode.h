@@ -21,3 +21,12 @@ inline std::string BaseGameCode(const std::string& code)
     return code;
 }
 inline bool IsGame(const std::string& code, const char* english) { return BaseGameCode(code) == english; }
+
+// Games that play on the plain emulator: no function table (a table would switch on the Black
+// games' layouts for them) and no widescreen of their own yet. The launcher lists them as games
+// it plays; they start with the two screens as one picture (Hybrid).
+inline bool IsGenericGame(const std::string& code) { return code == "C2SE"; } // Pokemon Mystery Dungeon: Explorers of Sky (US)
+
+// The size of a DS game's save: 512 KB for the Pokemon games, a generic game's own (Explorers of
+// Sky: 128 KB, as melonDS's ROM list has it).
+inline size_t DsSaveBytes(const std::string& code) { return code == "C2SE" ? 128 * 1024 : 512 * 1024; }

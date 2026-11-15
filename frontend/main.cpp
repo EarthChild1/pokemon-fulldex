@@ -2042,6 +2042,9 @@ int main(int argc, char** argv)
     // Pokemon SoulSilver (US): its new game's first menu is skipped (see where keys are sent).
     // (HeartGold too: the same game where it matters here.)
     const bool soulSilverRom = rom.size() > 0x10 && (IsGame(std::string((const char*)&rom[0x0C], 4), "IPGE") || IsGame(std::string((const char*)&rom[0x0C], 4), "IPKE"));
+    // A game with no widescreen of its own (gamecode.h): both screens as one picture, and its layout
+    // is not the one the Pokemon games' saved setting.
+    const bool genericGame = rom.size() > 0x10 && IsGenericGame(std::string((const char*)&rom[0x0C], 4));
     if (rom.empty())
     {
         fprintf(stderr, "cannot read ROM: %s\n", opt.rom.c_str());
@@ -2349,6 +2352,8 @@ int main(int argc, char** argv)
     cfg.focusMode = 0;
 #endif
     if (opt.layoutGiven || opt.headless) cfg.layout = opt.layout;
+    const std::string playerLayout = cfg.layout; // (the Pokemon games' setting: a generic game leaves it alone)
+    if (genericGame && !opt.layoutGiven) cfg.layout = "hybrid"; // (every start)
     if (opt.fullscreen) cfg.fullscreen = true;
     if (!opt.autoFocus) cfg.focusMode = 1;
     if (opt.headless) cfg.fps60 = false; // tests compare images with the plain renderer unless asked
@@ -9436,7 +9441,8 @@ int main(int argc, char** argv)
         // app switcher, the Switch's HOME) or stops. The screen layout as shown counts, as at exit.
         if (frame % 30 == 0 && !opt.headless)
         {
-            if (!singleScreenRom) cfg.layout = LayoutName(layout.mode);
+            if (genericGame) cfg.layout = playerLayout;
+            else if (!singleScreenRom) cfg.layout = LayoutName(layout.mode);
             cfg.focusMode = focus.mode;
             std::ostringstream text;
             cfg.Write(text);
@@ -11770,7 +11776,8 @@ int main(int argc, char** argv)
         if (liveTex) { SDL_DestroyTexture(liveTex); liveTex = nullptr; }
         if (frostTex) { SDL_DestroyTexture(frostTex); frostTex = nullptr; }
         exitStep("settings");
-        if (!singleScreenRom) cfg.layout = LayoutName(layout.mode); // the automatic choice is not the player's setting
+        if (genericGame) cfg.layout = playerLayout;
+        else if (!singleScreenRom) cfg.layout = LayoutName(layout.mode); // the automatic choice is not the player's setting
         cfg.focusMode = focus.mode;
         cfg.Save(opt.config);
     }
