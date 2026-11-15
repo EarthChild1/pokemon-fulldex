@@ -634,6 +634,38 @@ inline Element Crop(int screen, int sx, int sy, int sw, int sh)
     return { screen, sx, sy, sw, sh, 0, 0, 1.0f, 0, 255, false };
 }
 
+// A game with no layout per scene (a generic game: gamecode.h): the screen it is played on, `big`,
+// fills the view at full height with soft colours from its edges in the bars beside it (MergedNarrowBars,
+// as the opening's logos have), so the picture covers the whole window; the other screen stands in the bar, level with
+// its middle, or over the lower right corner on a view too narrow for a bar. Touches land through
+// whichever piece is the bottom screen (MergedTouch).
+inline Scene GenericScene(int big, float viewWidth)
+{
+    Scene sc;
+    sc.name = big ? "generic-bottom" : "generic-top";
+    sc.items.push_back(FullScreen(big));
+    sc.softBars = true; // (smooth colours from the picture's edges: a picture of scenery gives streaks to edgeFill)
+    Element small = FullScreen(1 - big);
+    small.crisp = false;
+    small.border = true;
+    const float bar = (viewWidth - 256) / 2;
+    if (bar >= 60)
+    {
+        const float k = std::min(0.5f, (bar - 6) / 256);
+        small.scale = k;
+        small.dx = 128 + viewWidth / 2 - 256 * k - 3;
+        small.dy = 96 - 192 * k / 2;
+    }
+    else
+    {
+        small.scale = 0.3f;
+        small.dx = 256 - 256 * 0.3f - 3;
+        small.dy = 192 - 192 * 0.3f - 3;
+    }
+    sc.items.push_back(small);
+    return sc;
+}
+
 // A battle's question ("Use next Pokemon?") stays at full size on the top screen. The two
 // answers from the touch screen sit at the right end of the message bar, under the text,
 // so nothing covers the battle or the question.

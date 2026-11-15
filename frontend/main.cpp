@@ -2354,7 +2354,7 @@ int main(int argc, char** argv)
 #endif
     if (opt.layoutGiven || opt.headless) cfg.layout = opt.layout;
     const std::string playerLayout = cfg.layout; // (the Pokemon games' setting: a generic game leaves it alone)
-    if (genericGame && !opt.layoutGiven) cfg.layout = "hybrid"; // (every start)
+    if (genericGame && !opt.layoutGiven) cfg.layout = "merged"; // (every start: pickSceneGeneric)
     if (opt.fullscreen) cfg.fullscreen = true;
     if (!opt.autoFocus) cfg.focusMode = 1;
     if (opt.headless) cfg.fps60 = false; // tests compare images with the plain renderer unless asked
@@ -3910,6 +3910,13 @@ int main(int argc, char** argv)
         lastKnownBw2Frame = funcWatch.CurrentFrame();
         return sc;
     };
+
+    // A generic game (gamecode.h) has no recompiled code to say what it is doing, so there is no
+    // layout per scene. The screen it is played on (ActivityFocus, or the player's own choice) fills the
+    // view at full height with soft colours from its edges beside it, so the picture covers the whole
+    // window; the other screen stands in the bar (over its corner on a view too narrow for a bar).
+    // See GenericScene in merged.h. Touches land through whichever piece is the bottom screen.
+    auto pickSceneGeneric = [&](float viewWidth) { return GenericScene(focus.Swapped() ? 1 : 0, viewWidth); };
 
     auto pickScene = [&](bool cursorInUse, float viewWidth, const ScreenImage* screens) {
         Scene sc;
@@ -10550,7 +10557,8 @@ int main(int argc, char** argv)
             // game stops polling it while its buttons animate between menus.
             const bool writing = saveWriting();
             fieldHeldBySave = writing && fieldActive();
-            Scene picked = funcWatchOn ? pickSceneBw2(view.width, screenImages)
+            Scene picked = genericGame ? pickSceneGeneric(view.width)
+                         : funcWatchOn ? pickSceneBw2(view.width, screenImages)
                                        : pickScene(frame < cursorShownUntil, view.width, screenImages);
             if (funcWatchOn) bw1.Adjust(picked, view.width, screenImages); // Pokemon Black and White
             // A whole screen shown alone whose sides are one colour, not black (a fade to white:
