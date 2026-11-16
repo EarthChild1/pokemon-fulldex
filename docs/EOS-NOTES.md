@@ -86,8 +86,8 @@ Beside the screen: every 512-wide layer that shows at that edge of the screen on
 left stale beside the screen when hidden, is not continued), sprites past the edges (9-bit X), the
 line's scroll and brightness, the frame's palettes. A translucent cover over the world at the screen's edge
 (measured on the 4 outermost world pixels against the bare world: a black or white cover of some weight)
-is carried on beside it: this continues the dungeon's darkness. Where the map ends inside the view (the
-beach is 288 pixels wide), the world is mirrored about its last column.
+is carried on beside it: this continues the dungeon's darkness. In ground mode the layers come from the
+game's maps in RAM (below).
 
 Known limits:
 
@@ -98,6 +98,69 @@ Known limits:
   (`IsPositionVisibleAndOnScreen`), 144 px, against 171 px at 16:9. Not changed yet.
 - Rotating, bitmap and 256-colour layers, mosaic and alpha blending between layers are not drawn beside
   the screen.
+
+## Towns, cutscenes, the intro and the title (pmdground.h)
+
+The refinement prompt's hypotheses, checked against this branch:
+
+- **C1 (the game fills only near the camera): confirmed, and the cause of the seams.** Ground mode keeps
+  each map whole in main RAM as 3x3-tile chunks and its renderer (overlay 11 `0x022EED98`) copies a
+  window of 12 x 9 chunks (36 x 27 tiles) into the hardware map from column 2; the rest is never written
+  (`SSR_VRAMW` on the map buffer `0x02143920`, DMA'd to `0x0600F000`: writes only from that function and
+  the tile animator). The plain strips (16 to 32 px) were two layers scrolled differently (BG2 20, BG3 32
+  in the meadow) ending at different columns of that window.
+- **C2 (mirroring): confirmed**, it was this branch's own fill (wide2d.h, `b6527f1`). Removed.
+- **C3 (per-line effects only in the centre): not the cause here.** wide2d.h already uses each line's scroll
+  and brightness (`LineScroll`, `LineBlend`); the streaks were the fills. No scene in the intro set uses
+  per-line scroll changes on the world layers (checked with `SSR_BGMAP_DUMP`).
+- **C4 (frame mismatch): not found.** The margins are drawn synchronously from the frame just emulated
+  (Android does not use the pipeline); the detector below finds no margin/centre brightness jumps outside
+  the Chunsoft logo (a composer slide, see known limits).
+- **C5 (fixed inset): confirmed**, fixed below.
+
+Reading the game's maps: `GROUND_STATE_MAP` (`0x02324CC0`) and `GROUND_STATE_WEATHER` (`0x02324CC4`) point to
+`struct ground_bg`; the renderer state is at +0x210 and +0x264 (stride 0x54, longer than pmdsky-debug's
+28-byte `map_render`). Measured with `SSR_PEEK` in the meadow (frames 2340-2700) and the stone room:
+
+| Offset | Meaning | Meadow | Stone room |
+|---|---|---|---|
+| +6 (byte) | map repeats across (`wrap_around`) | 1 | 0 |
+| +8, +C | width, height in chunks | 16, 16 | 60, 40 |
+| +10, +14 | width, height in pixels | 384, 384 | 1184, 768 |
+| +1C, +20 | chunks' tiles, layers 0 and 1 (9 u16 entries a chunk) | | |
+| +24, +28 | chunk maps, layers 0 and 1 (u16, 64 a row) | | |
+| +34, +38 | camera pixel | 83..233, 184 | |
+| +44, +48 | window's first chunk | 3..9, 7 | |
+| +4C, +50 | hardware scroll | | |
+
+A layer is used for a hardware background only while its entries match 98% of the 36 x 27 window the
+game drew (every frame). Map pixel for hardware map position (sx, sy): (cx*24 - 16 + sx, cy*24 + sy).
+Where the picture really ends (a map that does not repeat, or blank tiles to the end of the view), it goes
+on in the soft colour of its last 8 columns (7 rows around next to it, 49 rows around 24 px out): no mirrored
+or repeated copies. Scenes with art exactly the window's width (the waterfall, the title cave, the world
+map) show that fill beyond the art; the game has no picture there.
+
+## The panel (generic_scene.h, pmd.h)
+
+`WINDOW_LIST` (`0x022A88DC`, 20 x 0xE0): bytes 4-7 x, y, width, height in tiles, byte 8 the engine (0 = A),
+byte 0xB6 non-zero while shown (`valid`). Confirmed with `SSR_PMD_WINDOWS=1` in the dungeon: idle, only the
+top screen's help (`1:16,16-240,176`); with the menu open, `0:16,16-64,112` (the menu), `0:16,128-240,176`
+(the team box) and `0:88,32-240,48` (the floor name), exactly as drawn; the hidden message box has 0xB6 = 0.
+SECOND SCREEN SIZE (30-100%, default 60%: 0.3 of the DS screen, 290 x 215 px at 1600 x 720). The panel fades
+out in 7 frames when a window on the large screen, 8 px larger, reaches it, and back in 11 frames after none
+has for 10. At 20:9 the panel lies wholly in the margin (x 261-338 of the 426-px view), so the dungeon's
+windows never reach it; at 16:9 it overlaps x 219-256 and steps aside for the menu (checked).
+
+No pixel-based fallback: the window list is read from the one supported version only, confirmed at run
+time; a pixel detector would mistake the HUD line for a window.
+
+## Checks and timings
+
+- `python3 tools/pmd/check_margins.py <dir>`: over composed 1600 x 720 frames, flags black blocks next to
+  the screen and brightness jumps between the margin and the screen's edge. Intro, 9000 frames every 20:
+  only frames 340-460 (the Chunsoft logo).
+- `[wide2d]` in the log every 300 frames: drawing the margins. PC (WSL1), 20:9 (86 columns a side): dungeon
+  mean 0.67 ms, worst 1.13 ms; cutscenes mean 0.9 ms, worst 1.9 ms. Phone: pending.
 
 ## The picture (generic_scene.h, pmd.h)
 
