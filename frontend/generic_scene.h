@@ -17,6 +17,7 @@ public:
     static constexpr int kGone = 40;          // frames without content before its held box is forgotten
     static constexpr float kSlideStep = 1.0f / 14; // the slide takes 14 frames, as the professor's
     static constexpr float kMinBarScale = 0.6f;    // smaller than this in a bar: slide to make room
+    static constexpr float kWorldPanel = 0.5f;     // the other screen's panel over a wide world
 
     // What is on screen s apart from its background. The background is the backdrop and any layer
     // behind everything: one that shows round at least half of the screen's border (a window rarely
@@ -73,7 +74,11 @@ public:
     }
 
     // The scene for this frame: `big` the screen the game is played on (ActivityFocus or the player).
-    Scene Build(int big, float viewWidth, const ScreenImage screens[2])
+    // `world`: that screen's world is drawn across the whole view (Scene::wide, wide2d.h: Explorers of
+    // Sky's dungeon floor), so it stays in the middle, and the other screen's content is a framed
+    // panel in the view's top right corner instead, over the world, at half size (no bar to put it
+    // in).
+    Scene Build(int big, float viewWidth, const ScreenImage screens[2], bool world = false)
     {
         frame_++;
         if (big != lastBig_)
@@ -111,10 +116,25 @@ public:
             framed = true; // one picture: the whole screen, framed, in the bar as GenericScene has it
         const float sw = havePiece ? (float)piece.sw : 0, sh = havePiece ? (float)piece.sh : 0;
         const float inBar = havePiece ? std::min({ 1.25f, (bar - 6) / sw, 180.0f / sh }) : 0;
-        if (havePiece && viewWidth >= 300 && inBar < kMinBarScale) target = 1; // (no room in a bar: slide)
+        if (havePiece && viewWidth >= 300 && inBar < kMinBarScale && !world) target = 1; // (no room in a bar: slide)
+        if (world) slide_ = 0;
         slide_ += std::clamp(target - slide_, -kSlideStep, kSlideStep);
         const float ease = slide_ * slide_ * (3 - 2 * slide_);
         sc.items[0].dx = L * ease; // (L is negative: the main screen moves left)
+        if (world && (havePiece || framed))
+        {
+            // (The whole screen: a panel's own background keeps its text readable over the world.)
+            Element p = whole;
+            p.drop = 0;
+            const float pw = (float)p.sw, ph = (float)p.sh;
+            p.scale = std::min({ kWorldPanel, 140.0f / pw, 100.0f / ph });
+            p.dx = R - 3 - pw * p.scale;
+            p.dy = 3;
+            p.border = true;
+            p.crisp = false;
+            sc.items.push_back(p);
+            return sc;
+        }
         if (havePiece)
         {
             if (viewWidth < 300)

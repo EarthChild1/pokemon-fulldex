@@ -27,4 +27,14 @@ struct SsrWatchState
     }
 };
 extern SsrWatchState SsrWatch;
+
+// ssrecomp diagnostics: called on every ARM9 write (CPU or DMA) to main RAM or video memory between Lo and Hi
+// (inclusive) when Hook is set; frontend/main.cpp sets it for SSR_VRAMW. Off: one compare per write.
+struct SsrVramWatchState
+{
+    u32 Lo = 1, Hi = 0;
+    void (*Hook)(void* user, u32 addr, u32 val, int bytes) = nullptr;
+    void* User = nullptr;
+};
+extern SsrVramWatchState SsrVramWatch;
 }

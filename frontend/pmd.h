@@ -47,15 +47,16 @@ struct PmdFuncs
     }
 
     // The screen the game is played on in a mode: 0 top, 1 bottom, -1 not known (the activity decides).
-    // The dungeon and its menus are on the top screen; ground mode (towns, the guild, cutscenes) on the
-    // bottom one; the personality test asks its questions on the top one.
+    // The dungeon and its menus are on the bottom screen (the top one shows what the player chose for
+    // it: the controls, the team's stats, the message log or the map); so is ground mode (towns, the
+    // guild, cutscenes); the personality test asks its questions on the top one.
     static int LargeScreen(Mode m)
     {
         switch (m)
         {
+        case Quiz: return 0;
         case Dungeon:
         case DungeonMenu:
-        case Quiz: return 0;
         case Ground: return 1;
         default: return -1;
         }

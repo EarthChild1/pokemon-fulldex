@@ -44,6 +44,7 @@
 #include "DSi_DSP.h"
 #include "ARMJIT.h"
 #include "ARMJIT_Memory.h"
+#include "SsrWatch.h"
 
 namespace melonDS
 {
@@ -2123,6 +2124,8 @@ void NDS::ARM9Write8(u32 addr, u8 val)
     {
     case 0x02000000:
         JIT.CheckAndInvalidate<0, ARMJIT_Memory::memregion_MainRAM>(addr);
+        if (SsrVramWatch.Hook && addr - SsrVramWatch.Lo <= SsrVramWatch.Hi - SsrVramWatch.Lo)
+            SsrVramWatch.Hook(SsrVramWatch.User, addr, val, 1);
         *(u8*)&MainRAM[addr & MainRAMMask] = val;
         return;
 
@@ -2164,6 +2167,8 @@ void NDS::ARM9Write16(u32 addr, u16 val)
     {
     case 0x02000000:
         JIT.CheckAndInvalidate<0, ARMJIT_Memory::memregion_MainRAM>(addr);
+        if (SsrVramWatch.Hook && addr - SsrVramWatch.Lo <= SsrVramWatch.Hi - SsrVramWatch.Lo)
+            SsrVramWatch.Hook(SsrVramWatch.User, addr, val, 2);
         *(u16*)&MainRAM[addr & MainRAMMask] = val;
         return;
 
@@ -2186,6 +2191,8 @@ void NDS::ARM9Write16(u32 addr, u16 val)
 
     case 0x06000000:
         JIT.CheckAndInvalidate<0, ARMJIT_Memory::memregion_VRAM>(addr);
+        if (SsrVramWatch.Hook && addr - SsrVramWatch.Lo <= SsrVramWatch.Hi - SsrVramWatch.Lo)
+            SsrVramWatch.Hook(SsrVramWatch.User, addr, val, 2);
         switch (addr & 0x00E00000)
         {
         case 0x00000000: GPU.WriteVRAM_ABG<u16>(addr, val); return;
@@ -2224,6 +2231,8 @@ void NDS::ARM9Write32(u32 addr, u32 val)
     {
     case 0x02000000:
         JIT.CheckAndInvalidate<0, ARMJIT_Memory::memregion_MainRAM>(addr);
+        if (SsrVramWatch.Hook && addr - SsrVramWatch.Lo <= SsrVramWatch.Hi - SsrVramWatch.Lo)
+            SsrVramWatch.Hook(SsrVramWatch.User, addr, val, 4);
         *(u32*)&MainRAM[addr & MainRAMMask] = val;
         return ;
 
@@ -2246,6 +2255,8 @@ void NDS::ARM9Write32(u32 addr, u32 val)
 
     case 0x06000000:
         JIT.CheckAndInvalidate<0, ARMJIT_Memory::memregion_VRAM>(addr);
+        if (SsrVramWatch.Hook && addr - SsrVramWatch.Lo <= SsrVramWatch.Hi - SsrVramWatch.Lo)
+            SsrVramWatch.Hook(SsrVramWatch.User, addr, val, 4);
         switch (addr & 0x00E00000)
         {
         case 0x00000000: GPU.WriteVRAM_ABG<u32>(addr, val); return;

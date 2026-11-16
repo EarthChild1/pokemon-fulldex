@@ -33,6 +33,7 @@
 namespace melonDS
 {
 SsrWatchState SsrWatch;
+SsrVramWatchState SsrVramWatch;
 using Platform::Log;
 using Platform::LogLevel;
 

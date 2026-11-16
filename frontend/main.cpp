@@ -114,6 +114,8 @@
 #include "battlewide.h"
 #include "platinum.h" // Pokemon Platinum: which of its screens is up
 #include "belowscreen.h"
+#include "wide2d.h" // (a 2D screen drawn wider than the DS shows it: Explorers of Sky)
+#include "pmdwide.h" // (Explorers of Sky: more of a dungeon floor drawn beside the screen)
 #include "recomp_rt.h"
 #include "recomp_api.h"
 #include "GPU3D_Wide.h"
@@ -2169,6 +2171,44 @@ int main(int argc, char** argv)
     // of the Pokemon games' layouts come on with it. See pmdWatchOn and pmd.h.)
     const bool funcWatchOn = !opt.funcs.empty() && !genericGame && funcWatch.Load(opt.funcs);
     const bool pmdWatchOn = !opt.funcs.empty() && genericGame && funcWatch.Load(opt.funcs);
+    // Test aid: SSR_VRAMW="0x0600F000-0x0600FFFF" prints the ARM9's pc and lr for writes to that
+    // range of video memory or main RAM (the first few from each pc), to find the code that fills a
+    // background's map. Use with --interp (the JIT can write video memory directly).
+    if (const char* vw = getenv("SSR_VRAMW"))
+    {
+        unsigned lo = 0, hi = 0;
+        if (sscanf(vw, "%x-%x", &lo, &hi) == 2)
+        {
+            melonDS::SsrVramWatch.Lo = lo;
+            melonDS::SsrVramWatch.Hi = hi;
+            melonDS::SsrVramWatch.User = nds.get();
+            melonDS::SsrVramWatch.Hook = [](void* user, melonDS::u32 addr, melonDS::u32 val, int bytes) {
+                static std::map<std::pair<melonDS::u32, melonDS::u32>, int> seen;
+                auto* n = (melonDS::NDS*)user;
+                const melonDS::u32 pc = n->ARM9.R[15], lr = n->ARM9.R[14];
+                // (A DMA copying: its source; the pc that started it is long gone.)
+                int dma = -1;
+                for (int i = 0; i < 4; i++)
+                    if (n->ARM9IORead32(0x040000B8 + i * 12) & 0x80000000) dma = i;
+                const melonDS::u32 src = dma >= 0 ? n->ARM9IORead32(0x040000B0 + dma * 12) : 0;
+                int& c = seen[{ pc, dma >= 0 ? src : lr }];
+                if (c++ < 4)
+                {
+                    fprintf(stderr, "[vramw] frame %u pc %08X lr %08X addr %08X val %0*X dma %d src %08X stack", n->NumFrames, pc, lr, addr,
+                        bytes * 2, val, dma, src);
+                    // Words on the stack that could be return addresses (in code), nearest first.
+                    const melonDS::u32 sp = n->ARM9.R[13];
+                    for (melonDS::u32 a = sp; a < sp + 0x200; a += 4)
+                    {
+                        melonDS::u32 w = 0;
+                        n->ARM9.DataRead32(a, &w);
+                        if ((w >= 0x02000000 && w < 0x023C0000) || (w >= 0x01FF8000 && w < 0x02000000)) fprintf(stderr, " %X", w);
+                    }
+                    fprintf(stderr, "\n");
+                }
+            };
+        }
+    }
     // A SoulSilver build without the recompiled code (tools/soulsilver/tables_only.py) started
     // without --jit or --interp: the interpreter, rather than calling code that is not there.
     if (nds->ARM9.RecompEnable && !ref && rc_num_chunks && !rc_chunks[0].fn)
@@ -3056,6 +3096,18 @@ int main(int argc, char** argv)
         funcWatch.Attach(*nds, PmdFuncs::Names());
         fprintf(stderr, "[pmd] dungeon %d, menu %d, ground %d, personality test %d\n", pmd.advance, pmd.menu, pmd.script, pmd.quiz);
     }
+    // Explorers of Sky: more of a dungeon floor drawn beside the screen (pmdwide.h; WIDE MAP LOADING).
+    PmdWide pmdWide;
+    bool pmdWideLive = false; // (the dungeon overlay in memory, changed)
+    {
+        char code[5] = {};
+        if (FILE* rf = fopen(opt.rom.c_str(), "rb"))
+        {
+            if (fseek(rf, 0x0C, SEEK_SET) != 0 || fread(code, 1, 4, rf) != 4) code[0] = 0;
+            fclose(rf);
+        }
+        pmdWide.Init(code, genericGame && !opt.romHack && cfg.wide && cfg.wideMap && !AchievementsOn);
+    }
     Scene lastKnownBw2;
     uint32_t lastKnownBw2Frame = 0;
     auto weatherParticles = [&]() {
@@ -3930,8 +3982,11 @@ int main(int argc, char** argv)
     // The screen it is played on (ActivityFocus, or the player's own choice) fills the view at full
     // height with its edges continued to the sides; what is on the other screen apart from its
     // background stands beside it. Touches land through whichever piece is the bottom screen.
+    // (Explorers of Sky in a dungeon, its floor drawn wider in memory (pmdwide.h) and the large
+    // screen its own: the floor across the whole view, wide2d.h; see takeWideImage.)
+    bool pmdWorld = false;
     auto pickSceneGeneric = [&](float viewWidth, const ScreenImage* screens) {
-        return genericComposer.Build(focus.Swapped() ? 1 : 0, viewWidth, screens);
+        return genericComposer.Build(focus.Swapped() ? 1 : 0, viewWidth, screens, pmdWorld && viewWidth >= 300);
     };
 
     auto pickScene = [&](bool cursorInUse, float viewWidth, const ScreenImage* screens) {
@@ -7440,6 +7495,13 @@ int main(int argc, char** argv)
             melonDS::WideGpuDSLazy = rc_3d_render_skip = !ffFull && emuSpeed > 1 && i != emuSpeed - 2;
             rc_frame++;
             if (funcWatchOn || pmdWatchOn) funcWatch.NextFrame();
+            if (pmdWide.on)
+            {
+                const int before = pmdWide.patches;
+                pmdWideLive = pmdWide.Update(*nds);
+                if (pmdWide.patches != before)
+                    fprintf(stderr, "[pmdwide] frame %u: dungeon floor drawn %d columns wider on each side\n", frame, PmdWide::kExtraColumns);
+            }
             const double f0 = perfNow();
             nds->RunFrame();
             if (emuSpeed > 1)
@@ -9780,6 +9842,25 @@ int main(int argc, char** argv)
         auto takeWideImage = [&]() {
             wideImage = WideImage();
             battleRenderLater = false;
+            // Explorers of Sky in a dungeon: the bottom screen with the floor the game has drawn
+            // beside it (pmdwide.h) carried on to the edges of the view (wide2d.h).
+            if (pmdWorld && !scene.items.empty() && scene.items[0].screen == 1)
+            {
+                static std::vector<uint32_t> pmdWideBuf;
+                const float vw = MergedMakeView(outW, outH).width;
+                const int extend = std::min(PmdWide::kExtraColumns * 8, (int)std::ceil((vw - 256) / 2));
+                if (Wide2D::Render(*nds, 1 - topUnitOf(), nds->GPU.Framebuffer[nds->GPU.FrontBuffer][1].get(), extend, pmdWideBuf))
+                {
+                    wideImage.pixels = pmdWideBuf.data();
+                    wideImage.w = 256 + 2 * extend;
+                    wideImage.h = 192;
+                    wideImage.placed = true;
+                    wideImage.baseX = -extend;
+                    scene.wide = true;
+                    scene.seamlessBars = false;
+                    return;
+                }
+            }
             // A battle on a wide view: the screen widened (battlewide.h) instead of the bars.
             if (scene.edgeFill && cfg.wide && !opt.noWide)
             {
@@ -10585,6 +10666,12 @@ int main(int argc, char** argv)
             // game stops polling it while its buttons animate between menus.
             const bool writing = saveWriting();
             fieldHeldBySave = writing && fieldActive();
+            if (genericGame)
+            {
+                const PmdFuncs::Mode m = pmdWatchOn ? pmd.Current(funcWatch) : PmdFuncs::Unknown;
+                pmdWorld = merged && cfg.wide && !opt.noWide && pmdWideLive && focus.Swapped() &&
+                    (m == PmdFuncs::Dungeon || m == PmdFuncs::DungeonMenu);
+            }
             Scene picked = genericGame ? pickSceneGeneric(view.width, screenImages)
                          : funcWatchOn ? pickSceneBw2(view.width, screenImages)
                                        : pickScene(frame < cursorShownUntil, view.width, screenImages);
@@ -11659,6 +11746,32 @@ int main(int argc, char** argv)
             char lname[64];
             snprintf(lname, sizeof(lname), "/layers_%06u.png", frame);
             WritePNG(opt.shotDir + lname, img.data(), 256, 384);
+        }
+        if (wantShot && getenv("SSR_BGMAP_DUMP"))
+        {
+            // Diagnostics: every tiled background's whole map as video memory has it, and its
+            // registers (wide2d.h): what the game has put beside the screen.
+            auto& r2d = static_cast<GPU2D::SoftRenderer&>(nds->GPU.GetRenderer2D());
+            for (int unit = 0; unit < 2; unit++)
+            {
+                const GPU2D::Unit& u = unit == 0 ? nds->GPU.GPU2D_A : nds->GPU.GPU2D_B;
+                fprintf(stderr, "[bgmap] frame %u unit %c dispcnt %08X bgcnt %04X %04X %04X %04X scroll0 %d,%d %d,%d %d,%d %d,%d\n",
+                    frame, unit == 0 ? 'A' : 'B', u.DispCnt, u.BGCnt[0], u.BGCnt[1], u.BGCnt[2], u.BGCnt[3],
+                    r2d.LineScroll[unit][0][0][0], r2d.LineScroll[unit][0][0][1], r2d.LineScroll[unit][0][1][0], r2d.LineScroll[unit][0][1][1],
+                    r2d.LineScroll[unit][0][2][0], r2d.LineScroll[unit][0][2][1], r2d.LineScroll[unit][0][3][0], r2d.LineScroll[unit][0][3][1]);
+                fprintf(stderr, "[bgmap]   win0 x %d-%d y %d-%d win1 x %d-%d y %d-%d wincnt %02X %02X %02X %02X bldcnt %04X eva %d evb %d evy %d master %04X\n",
+                    u.Win0Coords[0], u.Win0Coords[1], u.Win0Coords[2], u.Win0Coords[3], u.Win1Coords[0], u.Win1Coords[1], u.Win1Coords[2],
+                    u.Win1Coords[3], u.WinCnt[0], u.WinCnt[1], u.WinCnt[2], u.WinCnt[3], u.BlendCnt, u.EVA, u.EVB, u.EVY, u.MasterBrightness);
+                Wide2D::Layer ls[4];
+                const int n = Wide2D::TextLayers(*nds, unit, ls);
+                for (int i = 0; i < n; i++)
+                {
+                    std::vector<uint32_t> map = Wide2D::DrawMap(*nds, unit, ls[i], r2d.PalSnap[unit]);
+                    char mname[64];
+                    snprintf(mname, sizeof(mname), "/bgmap_%06u_%c%d.png", frame, unit == 0 ? 'A' : 'B', ls[i].num);
+                    WritePNG(opt.shotDir + mname, map.data(), ls[i].mapW, ls[i].mapH);
+                }
+            }
         }
         if (wantShot && top && bot)
         {
