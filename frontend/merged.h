@@ -154,6 +154,11 @@ struct Scene
     // A single screen at full height on a wide view: the bars beside it in soft colours from
     // its edges (MergedNarrowBars) rather than one colour.
     bool softBars = false;
+    // A single screen at full height on a wide view: the bars beside it continue each row as the
+    // screen has it at that edge (MergedSideBars): one colour carried straight out, a repeating
+    // pattern repeated, and a picture (nothing to continue) in softBars' colours. For a game with no
+    // layout per scene (GenericScene), as the professor's backdrop is continued in SoulSilver.
+    bool seamlessBars = false;
     // With `wide`: the game's weather particles (sprites over the world: sand, rain, snow) are
     // on the top screen; they are repeated beside it (the screen's sprites at their place one
     // screen width to the left and right), so that the weather reaches the edges of the view.
@@ -635,8 +640,8 @@ inline Element Crop(int screen, int sx, int sy, int sw, int sh)
 }
 
 // A game with no layout per scene (a generic game: gamecode.h): the screen it is played on, `big`,
-// fills the view at full height with soft colours from its edges in the bars beside it (MergedNarrowBars,
-// as the opening's logos have), so the picture covers the whole window; the other screen stands in the bar, level with
+// fills the view at full height with its edges continued into the bars beside it (MergedSideBars, as
+// SoulSilver's professor's backdrop is), so the picture covers the whole window; the other screen stands in the bar, level with
 // its middle, or over the lower right corner on a view too narrow for a bar. Touches land through
 // whichever piece is the bottom screen (MergedTouch).
 inline Scene GenericScene(int big, float viewWidth)
@@ -644,7 +649,7 @@ inline Scene GenericScene(int big, float viewWidth)
     Scene sc;
     sc.name = big ? "generic-bottom" : "generic-top";
     sc.items.push_back(FullScreen(big));
-    sc.softBars = true; // (smooth colours from the picture's edges: a picture of scenery gives streaks to edgeFill)
+    sc.seamlessBars = true; // (its edges continued: one colour or a pattern carried out, a picture in soft colours)
     Element small = FullScreen(1 - big);
     small.crisp = false;
     small.border = true;
@@ -1055,6 +1060,63 @@ inline void MergedNarrowBars(const ScreenImage& s, uint32_t left[192], uint32_t 
     }
 }
 
+// The bars beside a screen, continued from its edges (Scene::seamlessBars): `barW` base pixels a
+// side, left[y * barW + (d - 1)] and right[...] being the pixel d base pixels out from the screen's
+// edge on row y. A row whose outer 16 pixels are one colour carries that colour out; one that
+// repeats every 2 to 16 pixels over its outer 32 repeats that; anything else is a picture there is
+// no more of, and gets MergedNarrowBars' soft colour.
+inline bool MergedSameish(uint32_t a, uint32_t b, int tol)
+{
+    return std::abs((int)((a >> 16) & 0xFF) - (int)((b >> 16) & 0xFF)) + std::abs((int)((a >> 8) & 0xFF) - (int)((b >> 8) & 0xFF)) +
+               std::abs((int)(a & 0xFF) - (int)(b & 0xFF)) <= tol;
+}
+// (Which kind each row on a side turned out to be: 0 one colour, 1 a pattern, 2 a picture. For tests.)
+inline void MergedSideBars(const ScreenImage& s, int barW, std::vector<uint32_t>& left, std::vector<uint32_t>& right,
+    uint8_t* kinds = nullptr)
+{
+    if (barW < 1) barW = 1;
+    left.assign((size_t)barW * 192, 0xFF000000u);
+    right.assign((size_t)barW * 192, 0xFF000000u);
+    uint32_t soft[2][192];
+    MergedNarrowBars(s, soft[0], soft[1]);
+    for (int side = 0; side < 2; side++)
+    {
+        std::vector<uint32_t>& out = side ? right : left;
+        for (int y = 0; y < 192; y++)
+        {
+            const uint32_t* row = s.pixels + y * 256;
+            // The row's outer 32 pixels, band[0] at the screen's edge and band[k] k pixels inwards.
+            uint32_t band[32];
+            for (int k = 0; k < 32; k++) band[k] = row[side ? 255 - k : k] & 0xFFFFFF;
+            int kind = 2;
+            bool flat = true;
+            for (int k = 1; k < 16 && flat; k++) flat = MergedSameish(band[k], band[0], 24);
+            int period = 0;
+            if (flat)
+                kind = 0;
+            else
+                for (int p = 2; p <= 16 && !period; p++)
+                {
+                    bool ok = true;
+                    for (int k = 0; k + p < 32 && ok; k++) ok = MergedSameish(band[k], band[k + p], 24);
+                    if (ok) period = p;
+                }
+            if (period) kind = 1;
+            if (kinds) kinds[side * 192 + y] = (uint8_t)kind;
+            uint32_t* dst = &out[(size_t)y * barW];
+            for (int d = 1; d <= barW; d++)
+            {
+                uint32_t c;
+                if (kind == 0) c = band[0];
+                // d pixels out repeats the pixel a whole number of periods in: band[(p - d % p) % p].
+                else if (kind == 1) c = band[(period - d % period) % period];
+                else c = soft[side][y] & 0xFFFFFF;
+                dst[d - 1] = 0xFF000000u | c;
+            }
+        }
+    }
+}
+
 // Black where ASPECT RATIO leaves the output beside the view.
 inline void MergedBlackBars(std::vector<uint32_t>& out, int outW, int outH)
 {
@@ -1146,6 +1208,13 @@ inline void MergedCompose(const Scene& scene, const ScreenImage screens[2], int 
     const bool narrowBars = (scene.softBars || (scene.wide && scene.narrow)) && !scene.items.empty() && scene.items[0].screen >= 0 &&
         v.originX > 0;
     if (narrowBars) MergedNarrowBars(screens[scene.items[0].screen], narrowBar[0], narrowBar[1], scene.wide && scene.narrow);
+    // The bars continued from the screen's edges (Scene::seamlessBars).
+    // (Beside the first piece, where it is: it may stand off the middle, GenericComposer's slide.)
+    const float mainL = scene.items.empty() ? v.originX : v.originX + scene.items[0].dx * v.unit, mainR = mainL + 256 * v.unit;
+    const bool seamless = scene.seamlessBars && !useWide && !scene.items.empty() && scene.items[0].screen >= 0 && (mainL > 0 || mainR < outW);
+    std::vector<uint32_t> sideBar[2];
+    const int sideW = seamless ? (int)std::ceil(std::max(mainL, outW - mainR) / v.unit) + 1 : 0;
+    if (seamless) MergedSideBars(screens[scene.items[0].screen], sideW, sideBar[0], sideBar[1]);
 
     auto rows = [&](int ya, int yb) {
         // Background: one colour, or the widescreen 3D picture with the game's fade applied.
@@ -1179,6 +1248,23 @@ inline void MergedCompose(const Scene& scene, const ScreenImage screens[2], int 
                             const uint32_t k = 256 - (256 - EdgeFillOuter) * d / (span > 1 ? span - 1 : 1);
                             dst[x] = 0xFF000000 | ((((c >> 16) & 0xFF) * k >> 8) << 16) | ((((c >> 8) & 0xFF) * k >> 8) << 8) | ((c & 0xFF) * k >> 8);
                         }
+                    }
+                }
+            if (seamless)
+                for (int y = ya; y < yb; y++)
+                {
+                    const int sy = (int)((y - v.originY) / v.unit);
+                    if (sy < 0 || sy >= 192) continue;
+                    uint32_t* dst = &out[(size_t)y * outW];
+                    for (int x = 0; x < std::min((int)mainL, outW); x++)
+                    {
+                        const int d = std::clamp((int)std::ceil((mainL - (x + 0.5f)) / v.unit), 1, sideW);
+                        dst[x] = sideBar[0][(size_t)sy * sideW + d - 1];
+                    }
+                    for (int x = std::max((int)mainR, 0); x < outW; x++)
+                    {
+                        const int d = std::clamp((int)((x + 0.5f - mainR) / v.unit) + 1, 1, sideW);
+                        dst[x] = sideBar[1][(size_t)sy * sideW + d - 1];
                     }
                 }
         }

@@ -91,6 +91,7 @@
 #include "emuthread.h"
 #include "pc_launcher.h"
 #include "activity_focus.h"
+#include "generic_scene.h"
 
 // WORLD ON GPU, the widescreen world drawn by the graphics chip (melonDS/src/GPU3D_WideGpu.h):
 // deko3D on the Switch, OpenGL on a PC (EGL on Linux, WGL on Windows).
@@ -2483,6 +2484,7 @@ int main(int argc, char** argv)
     Layout layout = LayoutFromName(cfg.layout);
     layout.fill = genericGame; // (Hybrid: the large screen at 16:9; see Layout::fill)
     ActivityFocus activityFocus; // (a generic game's AUTO choice of the large screen)
+    GenericComposer genericComposer; // (a generic game's picture: generic_scene.h)
     AndroidSecondScreen secondDisplay(!opt.headless);
     const uint8_t* singleScreenFlag = nullptr; // set by the ROM: nonzero while a scene needs both screens
     LayoutMode preSingleLayout = LayoutMode::Merged;
@@ -3912,11 +3914,13 @@ int main(int argc, char** argv)
     };
 
     // A generic game (gamecode.h) has no recompiled code to say what it is doing, so there is no
-    // layout per scene. The screen it is played on (ActivityFocus, or the player's own choice) fills the
-    // view at full height with soft colours from its edges beside it, so the picture covers the whole
-    // window; the other screen stands in the bar (over its corner on a view too narrow for a bar).
-    // See GenericScene in merged.h. Touches land through whichever piece is the bottom screen.
-    auto pickSceneGeneric = [&](float viewWidth) { return GenericScene(focus.Swapped() ? 1 : 0, viewWidth); };
+    // layout per scene: the picture is worked out from the screens (GenericComposer, generic_scene.h).
+    // The screen it is played on (ActivityFocus, or the player's own choice) fills the view at full
+    // height with its edges continued to the sides; what is on the other screen apart from its
+    // background stands beside it. Touches land through whichever piece is the bottom screen.
+    auto pickSceneGeneric = [&](float viewWidth, const ScreenImage* screens) {
+        return genericComposer.Build(focus.Swapped() ? 1 : 0, viewWidth, screens);
+    };
 
     auto pickScene = [&](bool cursorInUse, float viewWidth, const ScreenImage* screens) {
         Scene sc;
@@ -10557,7 +10561,7 @@ int main(int argc, char** argv)
             // game stops polling it while its buttons animate between menus.
             const bool writing = saveWriting();
             fieldHeldBySave = writing && fieldActive();
-            Scene picked = genericGame ? pickSceneGeneric(view.width)
+            Scene picked = genericGame ? pickSceneGeneric(view.width, screenImages)
                          : funcWatchOn ? pickSceneBw2(view.width, screenImages)
                                        : pickScene(frame < cursorShownUntil, view.width, screenImages);
             if (funcWatchOn) bw1.Adjust(picked, view.width, screenImages); // Pokemon Black and White

@@ -33,6 +33,8 @@ public:
 
         if (useWide) DrawWide(scene, screens, outW, outH, v, smooth, *wide);
         else if (scene.edgeFill && !scene.items.empty() && scene.items[0].screen >= 0) DrawEdgeFill(screens[scene.items[0].screen], outW, v);
+        else if (scene.seamlessBars && !scene.items.empty() && scene.items[0].screen >= 0)
+            DrawSeamlessBars(screens[scene.items[0].screen], outW, v, scene.items[0].dx);
         else if ((scene.softBars || (scene.wide && scene.narrow)) && !scene.items.empty() && scene.items[0].screen >= 0 && v.originX > 0)
             DrawNarrowBars(screens[scene.items[0].screen], outW, outH, v, scene.wide && scene.narrow);
 
@@ -460,6 +462,32 @@ private:
         (void)outH;
     }
 
+    // The bars continued from the screen's edges (Scene::seamlessBars, MergedSideBars): a texture
+    // per side, a texel per base pixel, drawn with nearest pixels so a pattern stays sharp.
+    void DrawSeamlessBars(const ScreenImage& top, int outW, const MergedView& v, float mainDx)
+    {
+        // (Beside the first piece, where it is: it may stand off the middle, GenericComposer's slide.)
+        const float mainL = v.originX + mainDx * v.unit, mainR = mainL + 256 * v.unit;
+        if (mainL <= 0 && mainR >= outW) return;
+        const int barW = (int)std::ceil(std::max(mainL, outW - mainR) / v.unit) + 1;
+        MergedSideBars(top, barW, SideBuf[0], SideBuf[1]);
+        // (The left texture runs outermost first: column c is barW - c pixels out from the screen.)
+        SideFlip.resize((size_t)barW * 192);
+        for (int y = 0; y < 192; y++)
+            for (int c = 0; c < barW; c++) SideFlip[(size_t)y * barW + c] = SideBuf[0][(size_t)y * barW + (barW - 1 - c)];
+        const float y0 = v.originY, h = 192 * v.unit, bw = barW * v.unit;
+        for (int side = 0; side < 2; side++)
+        {
+            SDL_Texture* t = Make(SideTex[side], barW, 192);
+            if (!t) continue;
+            SDL_SetTextureBlendMode(t, SDL_BLENDMODE_NONE);
+            SDL_SetTextureScaleMode(t, SDL_ScaleModeNearest);
+            SDL_UpdateTexture(t, nullptr, side ? SideBuf[1].data() : SideFlip.data(), barW * 4);
+            const SDL_FRect dst = side == 0 ? SDL_FRect { mainL - bw, y0, bw, h } : SDL_FRect { mainR, y0, bw, h };
+            SDL_RenderCopyF(R, t, nullptr, &dst);
+        }
+    }
+
     // The bars beside a battle: each row's outermost pixel that isn't black (EdgeFillColour),
     // darkening outwards (see Scene::edgeFill). The darkening is baked into a 16-pixel-wide texture per side.
     void DrawEdgeFill(const ScreenImage& top, int outW, const MergedView& v)
@@ -561,7 +589,8 @@ private:
     SDL_BlendMode Premultiplied;
     std::vector<Tex> Slots;
     std::vector<bool> CachedPremul; // (each slot's last blend mode, for a texture not uploaded again)
-    Tex WideTex, EdgeTex[2], EdgeInTex[2], FillTex[2], CoverTex[2], NarrowTex[2], WeatherTex[2];
+    Tex WideTex, EdgeTex[2], EdgeInTex[2], FillTex[2], CoverTex[2], NarrowTex[2], WeatherTex[2], SideTex[2];
+    std::vector<uint32_t> SideBuf[2], SideFlip; // (DrawSeamlessBars)
     uint32_t Fill[16 * 192];
     uint32_t Cover[2 * 192];
     Tex BoxTex;
