@@ -9870,8 +9870,24 @@ int main(int argc, char** argv)
                 // and a little more; a wider view shows the rest of its width plain, see MergedCompose.)
                 const int extend = std::min(PmdWide::kExtraColumns * 8, (int)std::ceil((vw - 256) / 2));
                 const int unit = pmdBig ? 1 - topUnitOf() : topUnitOf();
-                if (Wide2D::Render(*nds, unit, nds->GPU.Framebuffer[nds->GPU.FrontBuffer][pmdBig].get(), extend, pmdWideBuf,
-                        pmdGroundLayers > 0 ? pmdSources : nullptr))
+                const double wt0 = perfNow();
+                const bool drawn = Wide2D::Render(*nds, unit, nds->GPU.Framebuffer[nds->GPU.FrontBuffer][pmdBig].get(), extend, pmdWideBuf,
+                    pmdGroundLayers > 0 ? pmdSources : nullptr);
+                // (The time it takes, in the log every 300 frames: [wide2d] ... ms.)
+                {
+                    static double sum = 0, worst = 0;
+                    static int count = 0;
+                    const double ms = perfNow() - wt0;
+                    sum += ms;
+                    worst = std::max(worst, ms);
+                    if (++count == 300)
+                    {
+                        fprintf(stderr, "[wide2d] %d columns a side: mean %.2f ms, worst %.2f ms\n", extend, sum / count, worst);
+                        sum = worst = 0;
+                        count = 0;
+                    }
+                }
+                if (drawn)
                 {
                     wideImage.pixels = pmdWideBuf.data();
                     wideImage.w = 256 + 2 * extend;
