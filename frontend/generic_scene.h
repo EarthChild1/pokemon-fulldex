@@ -75,10 +75,10 @@ public:
 
     // The scene for this frame: `big` the screen the game is played on (ActivityFocus or the player).
     // `world`: that screen's world is drawn across the whole view (Scene::wide, wide2d.h: Explorers of
-    // Sky's dungeon floor), so it stays in the middle, and the other screen's content is a framed
-    // panel in the view's top right corner instead, over the world, at half size (no bar to put it
-    // in).
-    Scene Build(int big, float viewWidth, const ScreenImage screens[2], bool world = false)
+    // Sky's dungeons and towns), so it stays in the middle, and the other screen, if `panel` (it shows
+    // text or windows, not just more of the world), is a framed panel in the view's top right corner
+    // instead, over the world, at half size (no bar to put it in).
+    Scene Build(int big, float viewWidth, const ScreenImage screens[2], bool world = false, bool panel = true)
     {
         frame_++;
         if (big != lastBig_)
@@ -121,6 +121,7 @@ public:
         slide_ += std::clamp(target - slide_, -kSlideStep, kSlideStep);
         const float ease = slide_ * slide_ * (3 - 2 * slide_);
         sc.items[0].dx = L * ease; // (L is negative: the main screen moves left)
+        if (world && !panel) return sc;
         if (world && (havePiece || framed))
         {
             // (The whole screen: a panel's own background keeps its text readable over the world.)

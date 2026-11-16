@@ -9,6 +9,8 @@
 #pragma once
 #include <algorithm>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <vector>
 #include "NDS.h"
@@ -60,6 +62,37 @@ inline int TextLayers(melonDS::NDS& nds, int unitNum, Layer out[4])
             }
         }
     return n;
+}
+
+// The layers of a screen that hold its text and windows rather than a world: tiled layers that are
+// on and whose map is the screen's size (256 wide), as a mask of LayerClass bits (bit n: BG n). The
+// world layers of a game that scrolls a larger picture are 512 wide. (Not the 3D layer.)
+inline uint8_t UiLayers(melonDS::NDS& nds, int unitNum)
+{
+    const melonDS::GPU2D::Unit& unit = unitNum == 0 ? nds.GPU.GPU2D_A : nds.GPU.GPU2D_B;
+    const melonDS::u32 dispcnt = unit.DispCnt;
+    if (((dispcnt >> 16) & 3) != 1) return 0;
+    const int mode = dispcnt & 7;
+    uint8_t mask = 0;
+    for (int b = 0; b < 4; b++)
+    {
+        if (!(dispcnt & (0x100 << b)) || (b == 0 && (dispcnt & 8))) continue;
+        if ((b == 2 && mode > 1) || (b == 3 && mode > 0)) continue;
+        if (!(unit.BGCnt[b] & 0x4000)) mask |= 1 << b;
+    }
+    return mask;
+}
+
+// Whether any pixel of a screen (its renderer flags, 256x192) comes from one of `layers` (UiLayers).
+inline bool Shows(const uint8_t* flags, uint8_t layers)
+{
+    if (!flags || !layers) return false;
+    for (int i = 0; i < 256 * 192; i++)
+    {
+        const uint8_t f = flags[i];
+        if (!(f & 0xD0) && (f & 0x0F & layers)) return true;
+    }
+    return false;
 }
 
 // Reads a background's video memory (unit 0: engine A, 1: engine B).
@@ -275,6 +308,12 @@ inline bool Render(melonDS::NDS& nds, int unitNum, const uint32_t* screen, int e
                     const int x = side ? 255 - k : k;
                     use[i] = Sample(v, layers[i], lineScroll[y][layers[i].num][0] + x, lineScroll[y][layers[i].num][1] + y) != 0;
                 }
+            if (pass && y == 100 && getenv("SSR_WIDE2D_DEBUG"))
+                for (int i = 0; i < n; i++)
+                    fprintf(stderr, "[wide2d] side %d bg%d prio %d map %dx%d base %X char %X scroll %d,%d use %d sample0 %d\n", side,
+                        layers[i].num, layers[i].prio, layers[i].mapW, layers[i].mapH, layers[i].mapBase, layers[i].charBase,
+                        lineScroll[y][layers[i].num][0], lineScroll[y][layers[i].num][1], use[i],
+                        Sample(v, layers[i], lineScroll[y][layers[i].num][0] + (side ? 255 : 0), lineScroll[y][layers[i].num][1] + y));
             // The world without sprites at screen column x (or beside the screen).
             auto world = [&](int x, int& prio) -> uint32_t {
                 for (int i = 0; i < n; i++)
@@ -290,6 +329,27 @@ inline bool Render(melonDS::NDS& nds, int unitNum, const uint32_t* screen, int e
                 prio = 4;
                 return backdrop;
             };
+            // Where the map ends beside the screen (a town or a beach no wider than the game's own
+            // view of it, a floor's last column), the world is mirrored about its last column: the
+            // sand, the sea, a wall go on as they are near that column instead of stopping at the
+            // backdrop. `edgeAt`: the last column with something drawn, outwards from the screen.
+            int edgeAt = side ? 255 : 0;
+            bool ends = false;
+            if (pass)
+            {
+                int p;
+                for (int k = 0; k < extend; k++)
+                {
+                    const int x = side ? 256 + k : -1 - k;
+                    world(x, p);
+                    if (p == 4)
+                    {
+                        ends = true;
+                        break;
+                    }
+                    edgeAt = x;
+                }
+            }
             // A cover over the world at the edge: the 3D layer blended over it (Explorers of Sky
             // darkens what lies outside the lit room with translucent black polygons), or anything
             // else that makes the screen's edge differ from the world drawn here. Measured on the
@@ -334,8 +394,16 @@ inline bool Render(melonDS::NDS& nds, int unitNum, const uint32_t* screen, int e
                 const int x = side ? 256 + k : -extend + k;
                 const size_t si = (size_t)y * sideW + sideIndex(x);
                 int found;
-                uint32_t c = world(x, found);
-                if (objPrio[si] <= found) c = objCol[si];
+                uint32_t c;
+                if (ends && (side ? x > edgeAt : x < edgeAt))
+                {
+                    // (Mirrored; nothing in the map beyond the mirror either: the backdrop.)
+                    c = world(2 * edgeAt - x + (side ? 1 : -1), found);
+                    found = 4;
+                }
+                else
+                    c = world(x, found);
+                if (objPrio[si] < 4 && objPrio[si] <= found) c = objCol[si]; // (4: no sprite there)
                 if (a)
                 {
                     auto mix = [&](int sh) {

@@ -3984,9 +3984,9 @@ int main(int argc, char** argv)
     // background stands beside it. Touches land through whichever piece is the bottom screen.
     // (Explorers of Sky in a dungeon, its floor drawn wider in memory (pmdwide.h) and the large
     // screen its own: the floor across the whole view, wide2d.h; see takeWideImage.)
-    bool pmdWorld = false;
+    bool pmdWorld = false, pmdPanel = true;
     auto pickSceneGeneric = [&](float viewWidth, const ScreenImage* screens) {
-        return genericComposer.Build(focus.Swapped() ? 1 : 0, viewWidth, screens, pmdWorld && viewWidth >= 300);
+        return genericComposer.Build(focus.Swapped() ? 1 : 0, viewWidth, screens, pmdWorld && viewWidth >= 300, pmdPanel);
     };
 
     auto pickScene = [&](bool cursorInUse, float viewWidth, const ScreenImage* screens) {
@@ -10669,8 +10669,14 @@ int main(int argc, char** argv)
             if (genericGame)
             {
                 const PmdFuncs::Mode m = pmdWatchOn ? pmd.Current(funcWatch) : PmdFuncs::Unknown;
-                pmdWorld = merged && cfg.wide && !opt.noWide && pmdWideLive && focus.Swapped() &&
-                    (m == PmdFuncs::Dungeon || m == PmdFuncs::DungeonMenu);
+                // (A dungeon once the game draws its floor wider; towns and cutscenes as they are, the
+                // scene mirrored where its map ends.)
+                pmdWorld = merged && cfg.wide && !opt.noWide && focus.Swapped() &&
+                    (((m == PmdFuncs::Dungeon || m == PmdFuncs::DungeonMenu) && pmdWideLive) || m == PmdFuncs::Ground);
+                // The top screen as a panel only while it shows text or windows (the dungeon's
+                // controls, team or log; a menu), not the sky of a two-screen scene.
+                const int tu = topUnitOf();
+                pmdPanel = Wide2D::Shows(static_cast<GPU2D::SoftRenderer&>(nds->GPU.GetRenderer2D()).LayerFlags[tu], Wide2D::UiLayers(*nds, tu));
             }
             Scene picked = genericGame ? pickSceneGeneric(view.width, screenImages)
                          : funcWatchOn ? pickSceneBw2(view.width, screenImages)
