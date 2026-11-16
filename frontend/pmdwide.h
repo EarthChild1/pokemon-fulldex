@@ -42,8 +42,12 @@ public:
     void Init(const char* code, bool enabled)
     {
         const char* env = getenv("SSR_PMD_WIDE");
-        on = enabled && !(env && !strcmp(env, "0")) && !strncmp(code, "C2SE", 4);
+        supported = !strncmp(code, "C2SE", 4);
+        on = enabled && !(env && !strcmp(env, "0")) && supported;
     }
+
+    // Whether this game is the version below (WIDE MAP LOADING applies).
+    bool Supported() const { return supported; }
 
     static const Word* Words(int& n)
     {
@@ -77,7 +81,9 @@ public:
 
     // Once a frame. Makes the change if the overlay has just been loaded (every word as the game
     // has it). Returns true while the dungeon overlay is in memory with the change made.
-    bool Update(melonDS::NDS& nds)
+    // `want`: WIDE MAP LOADING as it is now; turned off, the game's own words are put back (and
+    // the floor beside the screen is no longer drawn: false).
+    bool Update(melonDS::NDS& nds, bool want = true)
     {
         if (!on) return false;
         int n;
@@ -90,6 +96,12 @@ public:
             orig += v == w[i].orig;
             patched += v == w[i].patched;
         }
+        if (!want)
+        {
+            if (patched == n)
+                for (int i = 0; i < n; i++) nds.ARM9Write32(w[i].addr, w[i].orig);
+            return false;
+        }
         if (patched == n) return true;
         if (orig != n) return false; // not this overlay (or not all of it as expected): left alone
         // (Through the console's own write, so that code already compiled by the JIT is dropped.)
@@ -98,6 +110,6 @@ public:
         return true;
     }
 
-    bool on = false;
+    bool on = false, supported = false;
     int patches = 0; // times the change was made (each time the overlay was loaded)
 };

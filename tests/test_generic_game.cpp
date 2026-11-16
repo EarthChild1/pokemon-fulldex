@@ -161,8 +161,29 @@ int main()
             const float R = 128 + wide / 2;
             assert(g.Slide() == 0.0f && s.items.size() == 2 && s.items[0].screen == 1 && s.items[0].dx == 0);
             const Element& p = s.items[1];
-            assert(p.screen == 0 && p.sw == 256 && p.sh == 192 && p.drop == 0 && p.border && p.scale == 0.5f);
+            // (SECOND SCREEN SIZE 60%: 0.3 of the DS screen, after fading in.)
+            assert(p.screen == 0 && p.sw == 256 && p.sh == 192 && p.drop == 0 && p.border && std::abs(p.scale - 0.3f) < 0.001f && p.alpha == 255);
             assert(p.dy == 3 && std::abs(p.dx + 256 * p.scale - (R - 3)) < 0.01f);
+            // A window under it: gone within 7 frames (not drawn at all), back 10 frames after it closes.
+            g.panelCovered = true;
+            int f = 0;
+            for (; f < 10 && (s = g.Build(1, wide, sc2, true, true)).items.size() == 2; f++) {}
+            assert(f <= 7 && s.items.size() == 1 && g.PanelAlpha() == 0);
+            g.panelCovered = false;
+            for (f = 0; f < 9; f++) assert(g.Build(1, wide, sc2, true, true).items.size() == 1); // (the hold)
+            for (f = 0; f < 30 && g.PanelAlpha() < 255; f++) s = g.Build(1, wide, sc2, true, true);
+            assert(s.items.size() == 2 && g.PanelAlpha() == 255 && f <= 12);
+            // Opening and closing quickly (a menu changing page) does not bring it back in between.
+            for (f = 0; f < 20; f++) { g.panelCovered = f % 4 == 0; s = g.Build(1, wide, sc2, true, true); }
+            g.panelCovered = true; for (f = 0; f < 10; f++) s = g.Build(1, wide, sc2, true, true);
+            for (f = 0; f < 20; f++) { g.panelCovered = f % 6 == 0; s = g.Build(1, wide, sc2, true, true); assert(g.PanelAlpha() == 0); }
+            g.panelCovered = false;
+            // Size: 100% is half the DS screen, 30% the smallest; the panel stays in the corner.
+            float a0, b0, a1, b1;
+            GenericComposer::PanelRect(wide, 1.0f, a0, b0, a1, b1);
+            assert(std::abs(a1 - a0 - 128) < 0.01f && std::abs(b1 - b0 - 96) < 0.01f && std::abs(a1 - (R - 3)) < 0.01f);
+            GenericComposer::PanelRect(wide, 0.1f, a0, b0, a1, b1);
+            assert(std::abs(a1 - a0 - 256 * 0.15f) < 0.01f);
             // Not when it shows only more of the world (no text or windows on it): the main screen alone.
             s = g.Build(1, wide, sc2, true, false);
             assert(s.items.size() == 1 && s.items[0].screen == 1 && s.items[0].dx == 0);

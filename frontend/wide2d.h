@@ -120,22 +120,87 @@ struct BgVram
     }
 };
 
-// A layer's palette index (with the palette bank of a 16-colour tile) at map position (mx, my),
-// which wraps round the map as the hardware does. 0: transparent.
-inline int Sample(const BgVram& v, const Layer& l, int mx, int my)
+// The map entry (tile number, flips, palette bank) at tile (tx, ty) of a layer's map in video
+// memory, which wraps round the map as the hardware does.
+inline melonDS::u16 MapEntry(const BgVram& v, const Layer& l, int tx, int ty)
 {
-    const int sx = mx & (l.mapW - 1), sy = my & (l.mapH - 1);
-    const int tx = sx >> 3, ty = sy >> 3;
+    tx &= (l.mapW >> 3) - 1;
+    ty &= (l.mapH >> 3) - 1;
     // 32x32-tile blocks: across first, then down (a 256-wide map has one across).
     const melonDS::u32 block = (tx >> 5) + (ty >> 5) * (l.mapW >> 8);
-    const melonDS::u16 e = v.R16(l.mapBase + block * 0x800 + (((ty & 31) << 5) + (tx & 31)) * 2);
-    int px = sx & 7, py = sy & 7;
+    return v.R16(l.mapBase + block * 0x800 + (((ty & 31) << 5) + (tx & 31)) * 2);
+}
+
+// The palette index (with the palette bank of a 16-colour tile) of pixel (px, py) of the tile a map
+// entry names. 0: transparent.
+inline int TilePixel(const BgVram& v, const Layer& l, melonDS::u16 e, int px, int py)
+{
     if (e & 0x400) px = 7 - px;
     if (e & 0x800) py = 7 - py;
     if (l.c256) return v.R8(l.charBase + (e & 0x3FF) * 64 + py * 8 + px);
     const melonDS::u8 two = v.R8(l.charBase + (e & 0x3FF) * 32 + py * 4 + (px >> 1));
     const int idx = (px & 1) ? two >> 4 : two & 0xF;
     return idx ? idx + (e >> 12) * 16 : 0;
+}
+
+// A layer's palette index at map position (mx, my), wrapping round the map. 0: transparent.
+inline int Sample(const BgVram& v, const Layer& l, int mx, int my)
+{
+    const int sx = mx & (l.mapW - 1), sy = my & (l.mapH - 1);
+    return TilePixel(v, l, MapEntry(v, l, sx >> 3, sy >> 3), sx & 7, sy & 7);
+}
+
+// Where a layer's map comes from beside the screen, when not from video memory: a game that keeps
+// its whole map in main RAM and copies only a window of it to the hardware's map (Explorers of Sky's
+// towns and cutscenes: 3x3-tile chunks, a chunk map 64 chunks across; pmdground.h). For the map
+// pixel the hardware shows at scrolled position (sx, sy) of its map: map pixel
+// (originX + sx, originY + sy), with sx and sy not wrapped at the hardware map's size.
+struct ChunkSource
+{
+    bool on = false;
+    const uint8_t* ram = nullptr;
+    uint32_t mask = 0;
+    uint32_t chunkMap = 0, chunkTiles = 0; // addresses: u16 chunk numbers (64 a row); 9 u16 entries a chunk
+    int originX = 0, originY = 0;          // map pixel at hardware map pixel (0, 0)
+    int widthTiles = 0, heightTiles = 0;
+    bool wrap = false;                     // the map repeats across (a panorama), or stops at its edges
+    // (Kept in sources[0] whether or not that layer has a source: the columns of the hardware map the
+    // game draws its window into, for the layers without one. 0: not known.)
+    int windowCol = 0, windowCols = 0;
+
+    uint16_t R16(uint32_t a) const
+    {
+        uint16_t v;
+        memcpy(&v, ram + (a & mask & ~1u), 2);
+        return v;
+    }
+    // The entry at map tile (tx, ty); false outside a map that does not repeat.
+    bool Entry(int tx, int ty, uint16_t& e) const
+    {
+        if (wrap)
+        {
+            tx %= widthTiles; if (tx < 0) tx += widthTiles;
+            ty %= heightTiles; if (ty < 0) ty += heightTiles;
+        }
+        else if (tx < 0 || ty < 0 || tx >= widthTiles || ty >= heightTiles)
+            return false;
+        const uint16_t chunk = R16(chunkMap + ((tx / 3) + (ty / 3) * 64) * 2);
+        e = R16(chunkTiles + (chunk * 9 + (ty % 3) * 3 + tx % 3) * 2);
+        return true;
+    }
+};
+
+// Floor division by 8 for negative positions too.
+inline int Tile8(int p) { return p >= 0 ? p >> 3 : -((7 - p) >> 3); }
+
+// As Sample, from a ChunkSource: (sx, sy) a scrolled position of the hardware map, not wrapped.
+// -1 past the edge of a map that does not repeat (there is no more of it).
+inline int SampleChunks(const BgVram& v, const Layer& l, const ChunkSource& s, int sx, int sy)
+{
+    const int mx = s.originX + sx, my = s.originY + sy;
+    uint16_t e;
+    if (!s.Entry(Tile8(mx), Tile8(my), e)) return -1;
+    return TilePixel(v, l, e, mx & 7, my & 7);
 }
 
 // BGR555 to XRGB8888.
@@ -170,8 +235,11 @@ inline std::vector<uint32_t> DrawMap(melonDS::NDS& nds, int unitNum, const Layer
 // each line was drawn with. Beside the screen is outside all of the game's windows. Not drawn there:
 // rotating, bitmap and 256-colour (extended palette) layers and sprites, mosaic, and blending
 // between layers. `out` is (256 + 2 * extend) x 192, XRGB. False (out untouched) if the screen is not
-// drawn the usual way or has no such layer.
-inline bool Render(melonDS::NDS& nds, int unitNum, const uint32_t* screen, int extend, std::vector<uint32_t>& out)
+// drawn the usual way or has no such layer. `sources` (4, by background number; may be null): layers
+// whose map beside the screen comes from the game's own map in main RAM (ChunkSource) rather than
+// from video memory, where the game keeps only the screen's window of it.
+inline bool Render(melonDS::NDS& nds, int unitNum, const uint32_t* screen, int extend, std::vector<uint32_t>& out,
+    const ChunkSource* sources = nullptr)
 {
     using namespace melonDS;
     if (extend <= 0 || !screen) return false;
@@ -287,6 +355,13 @@ inline bool Render(melonDS::NDS& nds, int unitNum, const uint32_t* screen, int e
     // sprite); the rows above the first that shows it take the first's.
     int coverA[2] = { 0, 0 };
     uint32_t coverC[2] = { 0, 0 };
+    // Per side and row, where the game's map ends beside the screen (MapEnd): on the right the first
+    // column past it, on the left how many columns from the outer edge are; -1 where it does not.
+    int mapEnd[2][192];
+    for (int sd = 0; sd < 2; sd++)
+        for (int yy = 0; yy < 192; yy++) mapEnd[sd][yy] = -1;
+    bool pictureAt[128] = {}; // (per side column of the row being drawn: a layer drew there)
+    if (extend > 128) return false;
     // (Pass 0 only finds the first row showing the world at each edge; pass 1 draws.)
     bool firstFound[2] = { false, false };
     for (int pass = 0; pass < 2; pass++)
@@ -301,55 +376,59 @@ inline bool Render(melonDS::NDS& nds, int unitNum, const uint32_t* screen, int e
             // The layers carried on at this side of this row: those that show at its edge on the
             // screen (any of the 8 outermost pixels drawn): a floor goes on, a grid the game only
             // draws while asked for (and has left stale beside the screen) does not.
+            // Layer i at screen column x of this row: from the game's own map in main RAM where it
+            // gives one (sources), else from the hardware's map in video memory.
+            auto sampleAt = [&](int i, int x) -> int {
+                const Layer& l = layers[i];
+                const int sx = lineScroll[y][l.num][0] + x, sy = lineScroll[y][l.num][1] + y;
+                if (sources && sources[l.num].on) return SampleChunks(v, l, sources[l.num], sx, sy);
+                // (With sources, the game keeps its picture in a window of the hardware map, columns
+                // windowCol to windowCol + windowCols: a layer it has no map in RAM for has nothing
+                // outside that window.)
+                if (sources && sources[0].windowCols)
+                {
+                    const int col = Tile8(sx);
+                    if (col < sources[0].windowCol || col >= sources[0].windowCol + sources[0].windowCols) return -1;
+                }
+                return Sample(v, l, sx, sy);
+            };
             bool use[4] = {};
             for (int i = 0; i < n; i++)
-                for (int k = 0; k < 8 && !use[i]; k++)
-                {
-                    const int x = side ? 255 - k : k;
-                    use[i] = Sample(v, layers[i], lineScroll[y][layers[i].num][0] + x, lineScroll[y][layers[i].num][1] + y) != 0;
-                }
+            {
+                // (A layer with a source is always carried on: its map is known beyond the screen.)
+                use[i] = sources && sources[layers[i].num].on;
+                for (int k = 0; k < 8 && !use[i]; k++) use[i] = sampleAt(i, side ? 255 - k : k) != 0;
+            }
             if (pass && y == 100 && getenv("SSR_WIDE2D_DEBUG"))
                 for (int i = 0; i < n; i++)
-                    fprintf(stderr, "[wide2d] side %d bg%d prio %d map %dx%d base %X char %X scroll %d,%d use %d sample0 %d\n", side,
+                    fprintf(stderr, "[wide2d] side %d bg%d prio %d map %dx%d base %X char %X scroll %d,%d use %d source %d\n", side,
                         layers[i].num, layers[i].prio, layers[i].mapW, layers[i].mapH, layers[i].mapBase, layers[i].charBase,
-                        lineScroll[y][layers[i].num][0], lineScroll[y][layers[i].num][1], use[i],
-                        Sample(v, layers[i], lineScroll[y][layers[i].num][0] + (side ? 255 : 0), lineScroll[y][layers[i].num][1] + y));
-            // The world without sprites at screen column x (or beside the screen).
+                        lineScroll[y][layers[i].num][0], lineScroll[y][layers[i].num][1], use[i], sources && sources[layers[i].num].on);
+            if (pass && y == 100 && side == 0 && sources && getenv("SSR_WIDE2D_DEBUG"))
+                for (int b = 0; b < 4; b++)
+                    if (sources[b].on)
+                        fprintf(stderr, "[wide2d] bg%d source %dx%d tiles wrap %d origin %d,%d\n", b, sources[b].widthTiles, sources[b].heightTiles,
+                            sources[b].wrap, sources[b].originX, sources[b].originY);
+            // The world without sprites at screen column x (or beside the screen). Where no layer
+            // has anything (past the edge of a map that does not repeat), the line's backdrop, as
+            // the hardware would show it.
+            // (prio 5: every layer there is past the edge of its map: the game has no picture there.)
             auto world = [&](int x, int& prio) -> uint32_t {
+                bool past = true;
                 for (int i = 0; i < n; i++)
                 {
                     if (!use[i]) continue;
-                    const Layer& l = layers[i];
-                    if (const int idx = Sample(v, l, lineScroll[y][l.num][0] + x, lineScroll[y][l.num][1] + y))
+                    const int idx = sampleAt(i, x);
+                    if (idx > 0)
                     {
-                        prio = l.prio;
-                        return colour(palette(idx * 2), l.num, y);
+                        prio = layers[i].prio;
+                        return colour(palette(idx * 2), layers[i].num, y);
                     }
+                    past &= idx < 0;
                 }
-                prio = 4;
+                prio = past ? 5 : 4;
                 return backdrop;
             };
-            // Where the map ends beside the screen (a town or a beach no wider than the game's own
-            // view of it, a floor's last column), the world is mirrored about its last column: the
-            // sand, the sea, a wall go on as they are near that column instead of stopping at the
-            // backdrop. `edgeAt`: the last column with something drawn, outwards from the screen.
-            int edgeAt = side ? 255 : 0;
-            bool ends = false;
-            if (pass)
-            {
-                int p;
-                for (int k = 0; k < extend; k++)
-                {
-                    const int x = side ? 256 + k : -1 - k;
-                    world(x, p);
-                    if (p == 4)
-                    {
-                        ends = true;
-                        break;
-                    }
-                    edgeAt = x;
-                }
-            }
             // A cover over the world at the edge: the 3D layer blended over it (Explorers of Sky
             // darkens what lies outside the lit room with translucent black polygons), or anything
             // else that makes the screen's edge differ from the world drawn here. Measured on the
@@ -394,15 +473,15 @@ inline bool Render(melonDS::NDS& nds, int unitNum, const uint32_t* screen, int e
                 const int x = side ? 256 + k : -extend + k;
                 const size_t si = (size_t)y * sideW + sideIndex(x);
                 int found;
-                uint32_t c;
-                if (ends && (side ? x > edgeAt : x < edgeAt))
+                uint32_t c = world(x, found);
+                pictureAt[k] = found < 4;
+                if (found == 5)
                 {
-                    // (Mirrored; nothing in the map beyond the mirror either: the backdrop.)
-                    c = world(2 * edgeAt - x + (side ? 1 : -1), found);
+                    // Past the map: filled in below (MapEnd). Sprites still go on top.
+                    if (mapEnd[side][y] < 0) mapEnd[side][y] = k;
+                    if (side == 0) mapEnd[0][y] = k + 1; // (the left side runs outwards from its right end)
                     found = 4;
                 }
-                else
-                    c = world(x, found);
                 if (objPrio[si] < 4 && objPrio[si] <= found) c = objCol[si]; // (4: no sprite there)
                 if (a)
                 {
@@ -413,6 +492,86 @@ inline bool Render(melonDS::NDS& nds, int unitNum, const uint32_t* screen, int e
                     c = mix(16) | mix(8) | mix(0);
                 }
                 row[x + extend] = c;
+            }
+            // (Blank map, the backdrop alone, running into the map's end, or with a map in RAM
+            // (sources: a town or a cutscene) to the edge of the view: the picture ends where the
+            // last of it is, and MapEnd takes over from there.)
+            if (sources && mapEnd[side][y] < 0)
+                mapEnd[side][y] = side ? extend : 0;
+            if (mapEnd[side][y] >= 0)
+            {
+                if (side)
+                    while (mapEnd[1][y] > 0 && !pictureAt[mapEnd[1][y] - 1]) mapEnd[1][y]--;
+                else
+                    while (mapEnd[0][y] < extend && !pictureAt[mapEnd[0][y]]) mapEnd[0][y]++;
+                if (mapEnd[side][y] == (side ? extend : 0)) mapEnd[side][y] = -1; // (picture to the edge)
+            }
+        }
+    }
+
+    // MapEnd: past the end of a map that does not repeat the game has no picture (a scene drawn no
+    // wider than the DS shows it, plus the little it scrolls). Rather than the backdrop in a hard
+    // edge, or anything made up from the picture (mirrored or repeated, which reads as wrong), the
+    // picture goes on in the soft colour of its last 8 columns, averaged over the 7 rows around
+    // next to it and over the 49 rows around 24 pixels out (as MergedNarrowBars' colours for a
+    // picture shown 4:3, smoother, so that the rows of a detailed picture do not run out as stripes).
+    for (int side = 0; side < 2; side++)
+    {
+        int rowSum[192][3];
+        bool has[192];
+        for (int y = 0; y < 192; y++)
+        {
+            const int e = mapEnd[side][y];
+            has[y] = e >= 0;
+            rowSum[y][0] = rowSum[y][1] = rowSum[y][2] = 0;
+            if (!has[y]) continue;
+            const uint32_t* row = &out[(size_t)y * outW];
+            // (The 8 columns of picture next to where it ends, in `out`.)
+            const int first = side ? extend + 256 + e - 8 : e;
+            for (int k = 0; k < 8; k++)
+            {
+                const uint32_t c = row[std::clamp(first + k, 0, outW - 1)];
+                rowSum[y][0] += (c >> 16) & 0xFF;
+                rowSum[y][1] += (c >> 8) & 0xFF;
+                rowSum[y][2] += c & 0xFF;
+            }
+        }
+        for (int y = 0; y < 192; y++)
+        {
+            if (!has[y]) continue;
+            int r = 0, g = 0, b = 0, cnt = 0;
+            for (int k = std::max(0, y - 24); k <= std::min(191, y + 24); k++)
+                if (has[k])
+                {
+                    r += rowSum[k][0]; g += rowSum[k][1]; b += rowSum[k][2];
+                    cnt += 8;
+                }
+            const uint32_t soft = (uint32_t)(r / cnt) << 16 | (uint32_t)(g / cnt) << 8 | (uint32_t)(b / cnt);
+            // (Next to the picture, the same over only the 7 rows around: closer to the picture's
+            // own colours there, and still not a row's pixel drawn out into a streak.)
+            int nr = 0, ng = 0, nb = 0, ncnt = 0;
+            for (int k = std::max(0, y - 3); k <= std::min(191, y + 3); k++)
+                if (has[k])
+                {
+                    nr += rowSum[k][0]; ng += rowSum[k][1]; nb += rowSum[k][2];
+                    ncnt += 8;
+                }
+            const uint32_t last = (uint32_t)(nr / ncnt) << 16 | (uint32_t)(ng / ncnt) << 8 | (uint32_t)(nb / ncnt);
+            uint32_t* row = &out[(size_t)y * outW];
+            const int e = mapEnd[side][y];
+            const int inner = side ? extend + 256 + e - 1 : e; // (the last column of picture)
+            const int from = side ? extend + 256 + e : 0, to = side ? outW : e;
+            for (int i = from; i < to; i++)
+            {
+                const int x = i - extend; // (screen column)
+                if (objPrio[(size_t)y * sideW + sideIndex(x)] < 4) continue; // (a sprite there)
+                const int d = side ? i - inner : inner - i;
+                const int t = std::min(d, 24) * 256 / 24;
+                auto mix = [&](int sh) {
+                    const int o = (last >> sh) & 0xFF, q = (soft >> sh) & 0xFF;
+                    return (uint32_t)((o * (256 - t) + q * t) >> 8) << sh;
+                };
+                row[i] = mix(16) | mix(8) | mix(0);
             }
         }
     }

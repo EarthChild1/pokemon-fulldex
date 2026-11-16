@@ -116,6 +116,7 @@
 #include "belowscreen.h"
 #include "wide2d.h" // (a 2D screen drawn wider than the DS shows it: Explorers of Sky)
 #include "pmdwide.h" // (Explorers of Sky: more of a dungeon floor drawn beside the screen)
+#include "pmdground.h" // (Explorers of Sky: its towns' and cutscenes' maps, beside the screen)
 #include "recomp_rt.h"
 #include "recomp_api.h"
 #include "GPU3D_Wide.h"
@@ -1671,6 +1672,9 @@ struct Settings : OptionalFeatures
     // defaults below), where it is a setting: FAST FORWARD LOW RES.
     bool ffLowRes = true;
     int fastSpeed = 4, slowDivisor = 1, rewindMb = 0;
+    // SECOND SCREEN SIZE: the other screen's panel over a wide world (Explorers of Sky), in percent
+    // of a half-size screen (generic_scene.h, GenericComposer::PanelRect).
+    int panelSize = 60;
     bool smartFast = false, turboA = false;
     bool fastButtonToggle = false;
     bool fastLock = false; // pause-menu FAST FORWARD, retained for the next launch
@@ -1784,6 +1788,7 @@ struct Settings : OptionalFeatures
             else if (k == "fast_button") fastButtonToggle = v == "toggle";
             else if (k == "fast_lock") fastLock = v == "1";
             else if (k == "fast_speed") fastSpeed = std::clamp(atoi(v.c_str()),2,8);
+            else if (k == "panel_size") panelSize = std::clamp(atoi(v.c_str()) / 10 * 10, 30, 100);
             else if (k == "slow_divisor") slowDivisor = v=="4"?4:v=="2"?2:1;
             else if (k == "rewind_mb") rewindMb = v=="128"?128:v=="64"?64:0;
             else if (k == "companion_overlay") companionOverlay=v=="1";
@@ -1847,6 +1852,7 @@ struct Settings : OptionalFeatures
         f << "fast_button=" << (fastButtonToggle ? "toggle" : "hold") << "\n";
         f << "fast_lock=" << (fastLock ? 1 : 0) << "\n";
         f << "fast_speed=" << fastSpeed << "\n";
+        f << "panel_size=" << panelSize << "\n";
         f << "slow_divisor=" << slowDivisor << "\n";
         f << "rewind_mb=" << rewindMb << "\n";
         f << "companion_overlay=" << companionOverlay << "\n";
@@ -2194,8 +2200,8 @@ int main(int argc, char** argv)
                 int& c = seen[{ pc, dma >= 0 ? src : lr }];
                 if (c++ < 4)
                 {
-                    fprintf(stderr, "[vramw] frame %u pc %08X lr %08X addr %08X val %0*X dma %d src %08X stack", n->NumFrames, pc, lr, addr,
-                        bytes * 2, val, dma, src);
+                    fprintf(stderr, "[vramw] frame %u pc %08X lr %08X addr %08X val %0*X dma %d src %08X r0-r3 %08X %08X %08X %08X stack", n->NumFrames, pc,
+                        lr, addr, bytes * 2, val, dma, src, n->ARM9.R[0], n->ARM9.R[1], n->ARM9.R[2], n->ARM9.R[3]);
                     // Words on the stack that could be return addresses (in code), nearest first.
                     const melonDS::u32 sp = n->ARM9.R[13];
                     for (melonDS::u32 a = sp; a < sp + 0x200; a += 4)
@@ -3106,7 +3112,7 @@ int main(int argc, char** argv)
             if (fseek(rf, 0x0C, SEEK_SET) != 0 || fread(code, 1, 4, rf) != 4) code[0] = 0;
             fclose(rf);
         }
-        pmdWide.Init(code, genericGame && !opt.romHack && cfg.wide && cfg.wideMap && !AchievementsOn);
+        pmdWide.Init(code, genericGame && !opt.romHack && !AchievementsOn);
     }
     Scene lastKnownBw2;
     uint32_t lastKnownBw2Frame = 0;
@@ -3985,6 +3991,8 @@ int main(int argc, char** argv)
     // (Explorers of Sky in a dungeon, its floor drawn wider in memory (pmdwide.h) and the large
     // screen its own: the floor across the whole view, wide2d.h; see takeWideImage.)
     bool pmdWorld = false, pmdPanel = true;
+    int pmdBig = 1, pmdGroundLayers = 0;  // (the large screen; how many of its layers pmdground.h found)
+    Wide2D::ChunkSource pmdSources[4];
     auto pickSceneGeneric = [&](float viewWidth, const ScreenImage* screens) {
         return genericComposer.Build(focus.Swapped() ? 1 : 0, viewWidth, screens, pmdWorld && viewWidth >= 300, pmdPanel);
     };
@@ -5277,7 +5285,7 @@ int main(int argc, char** argv)
         M_COMPANION, M_CPARTY, M_CBAG, M_CDEX, M_CLOCATION, M_CMAP, M_CENCOUNTERS, M_REFERENCE, M_REFERENCE_KIND, M_REFERENCE_QUERY, M_CPOCKET, M_CDEX_FILTER, M_CBATTLE, M_CGUIDE, M_CGUIDE_REVEAL, M_NUZLOCKE, M_RUN_ENABLED, M_RUN_RESET, M_RUN_RESET_CONFIRM, M_QUICK_ACTIONS, M_OPEN_PC, M_HUB_SAVE, M_HUB_LOAD, M_HUB_CHEATS, M_HUB_FAST, M_HUB_SETTINGS, M_HUB_QUIT,
         M_QUIT_YES, M_RESET_YES, // (QUIT GAME / RESET GAME asked first: PAGE_QUIT_CONFIRM)
         M_SHORTCUTS, // (CONTROLS: Fulldex's own four shortcuts, opening KEYS AND BUTTONS at them)
-        M_EXTRAS, M_EXTRA0=92000, M_EXTRA_END=92006, M_PLAYBACK=93000, M_FAST_SPEED, M_SMART_FAST, M_SLOW_MOTION, M_REWIND_MB, M_REWIND, M_TURBO_A, M_SCREEN_FILTER, M_COMPANION_OVERLAY, M_PARTY_HUD, M_STATUS_BAR, M_FAST_BUTTON,
+        M_EXTRAS, M_EXTRA0=92000, M_EXTRA_END=92006, M_PLAYBACK=93000, M_FAST_SPEED, M_SMART_FAST, M_SLOW_MOTION, M_REWIND_MB, M_REWIND, M_TURBO_A, M_SCREEN_FILTER, M_COMPANION_OVERLAY, M_PARTY_HUD, M_STATUS_BAR, M_FAST_BUTTON, M_PANEL_SIZE,
         M_STATES, M_SLOT_SAVE, M_SLOT_LOAD, M_SLOT_PREVIOUS, M_UNDO_LOAD,
         M_KEY0=94000, M_KEY_LAYER=94900, M_KEY_SPACE, M_KEY_DEL, M_KEY_DONE, M_KEY_SYMBOLS, // (the keyboard's keys, Menu::keyGrid: SEARCH, the log in)
         M_CPARTY0=80000, M_CDEX0=81000, M_CITEM0=83000, M_RRESULT0=86000, M_SLOT0=90000, M_GUIDE0=91000,
@@ -5832,10 +5840,16 @@ int main(int argc, char** argv)
             // (Black, White, Black 2 and White 2. The game sets its memory up for it as it
             // starts, so a change waits for the next start.)
             toggle(M_WIDEMAP, "WIDE MAP LOADING", Glass::I_GLOBE, Menu::P_NONE, cfg.wideMap,
-                   bw2map.Supported() ? "Load more of the map at the sides, so the wide picture has no empty edges." : "Load more of the map at the sides. Not needed in this game.",
-                   "Black, White, Black 2 and White 2. Applies the next time the game starts.");
-            if (!bw2map.Supported()) { menu.items.back().disabled = true; menu.items.back().value = "-"; menu.items.back().choice = -1; }
-            else if (cfg.wideMap != bw2map.on) menu.items.back().tip = "Changed: applies the next time the game starts.";
+                   bw2map.Supported() || pmdWide.Supported() ? "Load more of the map at the sides, so the wide picture has no empty edges." : "Load more of the map at the sides. Not needed in this game.",
+                   pmdWide.Supported() ? "Explorers of Sky: the dungeon floor beside the screen. Applies straight away." : "Black, White, Black 2 and White 2. Applies the next time the game starts.");
+            if (!bw2map.Supported() && !pmdWide.Supported()) { menu.items.back().disabled = true; menu.items.back().value = "-"; menu.items.back().choice = -1; }
+            else if (bw2map.Supported() && cfg.wideMap != bw2map.on) menu.items.back().tip = "Changed: applies the next time the game starts.";
+            // (Explorers of Sky: the other screen as a panel over the wide world.)
+            if (genericGame)
+                picker(M_PANEL_SIZE, "SECOND SCREEN SIZE", Glass::I_RATIO, Menu::P_NONE, { "30%", "40%", "50%", "60%", "70%", "80%", "90%", "100%" },
+                       (cfg.panelSize - 30) / 10,
+                       "How big the other screen is in the corner while the game fills the wide view.",
+                       "It steps aside while a menu or message box of the game is under it.");
 #ifdef __SWITCH__
             picker(M_WIDELINES, "WORLD DETAIL", Glass::I_GRID, Menu::P_RES, { "192", "288", "384", "540", "720", "1080", "1440", "2160" }, detailIndex(),
                    "How many lines the 3D world is drawn with. 192 is the DS's own.", "More lines look sharper but need more power.");
@@ -7498,7 +7512,7 @@ int main(int argc, char** argv)
             if (pmdWide.on)
             {
                 const int before = pmdWide.patches;
-                pmdWideLive = pmdWide.Update(*nds);
+                pmdWideLive = pmdWide.Update(*nds, cfg.wide && cfg.wideMap);
                 if (pmdWide.patches != before)
                     fprintf(stderr, "[pmdwide] frame %u: dungeon floor drawn %d columns wider on each side\n", frame, PmdWide::kExtraColumns);
             }
@@ -9345,7 +9359,11 @@ int main(int argc, char** argv)
                 cfg.wide = !cfg.wide;
                 break;
             case M_WIDEMAP:
-                if (bw2map.Supported()) cfg.wideMap = !cfg.wideMap;
+                if (bw2map.Supported() || pmdWide.Supported()) cfg.wideMap = !cfg.wideMap;
+                break;
+            case M_PANEL_SIZE:
+                cfg.panelSize = 30 + ((cfg.panelSize - 30) / 10 + (dir < 0 ? 7 : 1)) % 8 * 10;
+                cfg.Save(opt.config);
                 break;
             case M_WIDELINES:
                 cfg.wideLines = detailLines[(detailIndex() + (dir < 0 ? detailCount - 1 : 1)) % detailCount];
@@ -9844,12 +9862,16 @@ int main(int argc, char** argv)
             battleRenderLater = false;
             // Explorers of Sky in a dungeon: the bottom screen with the floor the game has drawn
             // beside it (pmdwide.h) carried on to the edges of the view (wide2d.h).
-            if (pmdWorld && !scene.items.empty() && scene.items[0].screen == 1)
+            if (pmdWorld && !scene.items.empty() && scene.items[0].screen == pmdBig)
             {
                 static std::vector<uint32_t> pmdWideBuf;
                 const float vw = MergedMakeView(outW, outH).width;
+                // (At most what the game supplies beside the screen: 12 columns of 8 pixels, a 20:9 view
+                // and a little more; a wider view shows the rest of its width plain, see MergedCompose.)
                 const int extend = std::min(PmdWide::kExtraColumns * 8, (int)std::ceil((vw - 256) / 2));
-                if (Wide2D::Render(*nds, 1 - topUnitOf(), nds->GPU.Framebuffer[nds->GPU.FrontBuffer][1].get(), extend, pmdWideBuf))
+                const int unit = pmdBig ? 1 - topUnitOf() : topUnitOf();
+                if (Wide2D::Render(*nds, unit, nds->GPU.Framebuffer[nds->GPU.FrontBuffer][pmdBig].get(), extend, pmdWideBuf,
+                        pmdGroundLayers > 0 ? pmdSources : nullptr))
                 {
                     wideImage.pixels = pmdWideBuf.data();
                     wideImage.w = 256 + 2 * extend;
@@ -10669,14 +10691,56 @@ int main(int argc, char** argv)
             if (genericGame)
             {
                 const PmdFuncs::Mode m = pmdWatchOn ? pmd.Current(funcWatch) : PmdFuncs::Unknown;
-                // (A dungeon once the game draws its floor wider; towns and cutscenes as they are, the
-                // scene mirrored where its map ends.)
-                pmdWorld = merged && cfg.wide && !opt.noWide && focus.Swapped() &&
-                    (((m == PmdFuncs::Dungeon || m == PmdFuncs::DungeonMenu) && pmdWideLive) || m == PmdFuncs::Ground);
+                // The world across the whole view: a dungeon once the game draws its floor wider
+                // (pmdwide.h); towns, cutscenes and the title from the game's own maps in main RAM
+                // (pmdground.h), on whichever screen is large, while they match what the game drew.
+                const int tu = topUnitOf();
+                const bool dungeon = m == PmdFuncs::Dungeon || m == PmdFuncs::DungeonMenu;
+                pmdBig = focus.Swapped() ? 1 : 0;
+                const int bigUnit = pmdBig ? 1 - tu : tu;
+                pmdGroundLayers = 0;
+                if (!dungeon && merged && cfg.wide && !opt.noWide) pmdGroundLayers = PmdGround::Find(*nds, bigUnit, pmdSources);
+                pmdWorld = merged && cfg.wide && !opt.noWide && ((dungeon && pmdWideLive && pmdBig == 1) || pmdGroundLayers > 0);
                 // The top screen as a panel only while it shows text or windows (the dungeon's
                 // controls, team or log; a menu), not the sky of a two-screen scene.
-                const int tu = topUnitOf();
                 pmdPanel = Wide2D::Shows(static_cast<GPU2D::SoftRenderer&>(nds->GPU.GetRenderer2D()).LayerFlags[tu], Wide2D::UiLayers(*nds, tu));
+                // SECOND SCREEN SIZE, and the panel stepping aside while one of the game's windows on
+                // the screen it is played on (its menus, message boxes, help) reaches where the panel
+                // goes: from the game's own window list (pmd.h), each window 8 pixels larger.
+                genericComposer.panelSize = cfg.panelSize / 100.0f;
+                bool covered = false;
+                if (pmdWatchOn)
+                {
+                    PmdFuncs::Window wins[PmdFuncs::kWindows];
+                    const int nw = PmdFuncs::Windows(nds->MainRAM, nds->MainRAMMask, wins);
+                    float px0, py0, px1, py1;
+                    GenericComposer::PanelRect(view.width, genericComposer.panelSize, px0, py0, px1, py1);
+                    const int mainEngine = 1 - tu; // (the bottom screen's engine: 0 is A)
+                    for (int i = 0; i < nw; i++)
+                        if (wins[i].screen == mainEngine && wins[i].x0 - 8 < px1 && wins[i].x1 + 8 > px0 && wins[i].y0 - 8 < py1 && wins[i].y1 + 8 > py0)
+                            covered = true;
+                    if (getenv("SSR_PMD_WINDOWS"))
+                    {
+                        static std::string last;
+                        std::string now;
+                        for (int i = 0; i < nw; i++)
+                            now += " " + std::to_string(wins[i].screen) + ":" + std::to_string(wins[i].x0) + "," + std::to_string(wins[i].y0) + "-" +
+                                   std::to_string(wins[i].x1) + "," + std::to_string(wins[i].y1);
+                        if (now != last)
+                        {
+                            fprintf(stderr, "[pmd] frame %u windows%s%s\n", frame, now.c_str(), covered ? " (panel covered)" : "");
+                            for (int i = 0; i < PmdFuncs::kWindows; i++)
+                            {
+                                const uint8_t* w = nds->MainRAM + ((PmdFuncs::kWindowList + i * PmdFuncs::kWindowSize) & nds->MainRAMMask);
+                                fprintf(stderr, "[pmd]   %2d:", i);
+                                for (int b = 0; b < 0xE0; b++) fprintf(stderr, "%s%02X", b % 16 ? "" : " ", w[b]);
+                                fprintf(stderr, "\n");
+                            }
+                        }
+                        last = now;
+                    }
+                }
+                genericComposer.panelCovered = covered;
             }
             Scene picked = genericGame ? pickSceneGeneric(view.width, screenImages)
                          : funcWatchOn ? pickSceneBw2(view.width, screenImages)

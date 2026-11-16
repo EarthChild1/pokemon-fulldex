@@ -77,7 +77,7 @@ public:
     // `world`: that screen's world is drawn across the whole view (Scene::wide, wide2d.h: Explorers of
     // Sky's dungeons and towns), so it stays in the middle, and the other screen, if `panel` (it shows
     // text or windows, not just more of the world), is a framed panel in the view's top right corner
-    // instead, over the world, at half size (no bar to put it in).
+    // instead, over the world (PanelRect: panelSize of half size; it fades out under a window, panelCovered).
     Scene Build(int big, float viewWidth, const ScreenImage screens[2], bool world = false, bool panel = true)
     {
         frame_++;
@@ -121,18 +121,30 @@ public:
         slide_ += std::clamp(target - slide_, -kSlideStep, kSlideStep);
         const float ease = slide_ * slide_ * (3 - 2 * slide_);
         sc.items[0].dx = L * ease; // (L is negative: the main screen moves left)
-        if (world && !panel) return sc;
-        if (world && (havePiece || framed))
+        if (world)
         {
+            // The panel fades out while one of the game's windows reaches it (panelCovered, set by the
+            // caller from PanelRect) and back in once none has for kPanelHold frames; gone, it is not
+            // drawn at all (nothing to touch, no ghost).
+            const bool show = panel && (havePiece || framed);
+            if (panelCovered || !show) clearFrames_ = 0;
+            else clearFrames_++;
+            const int target = show && !panelCovered && clearFrames_ >= kPanelHold ? 255 : 0;
+            if (target > panelAlpha_) panelAlpha_ = std::min(255, panelAlpha_ + kPanelIn);
+            else if (target < panelAlpha_) panelAlpha_ = std::max(0, panelAlpha_ - kPanelOut);
+            if (!show) panelAlpha_ = 0;
+            if (panelAlpha_ == 0) return sc;
             // (The whole screen: a panel's own background keeps its text readable over the world.)
             Element p = whole;
             p.drop = 0;
-            const float pw = (float)p.sw, ph = (float)p.sh;
-            p.scale = std::min({ kWorldPanel, 140.0f / pw, 100.0f / ph });
-            p.dx = R - 3 - pw * p.scale;
-            p.dy = 3;
+            float px0, py0, px1, py1;
+            PanelRect(viewWidth, panelSize, px0, py0, px1, py1);
+            p.scale = (px1 - px0) / 256;
+            p.dx = px0;
+            p.dy = py0;
             p.border = true;
             p.crisp = false;
+            p.alpha = (uint8_t)panelAlpha_;
             sc.items.push_back(p);
             return sc;
         }
@@ -164,7 +176,30 @@ public:
 
     float Slide() const { return slide_; }
 
+    // Where the other screen's panel goes over a wide world, in base pixels: the view's top right
+    // corner, `size` of the full panel (half the DS screen: 128 x 96; SECOND SCREEN SIZE, 0.3 to 1).
+    static void PanelRect(float viewWidth, float size, float& x0, float& y0, float& x1, float& y1)
+    {
+        const float scale = kWorldPanel * std::clamp(size, 0.3f, 1.0f);
+        x1 = 128 + viewWidth / 2 - 3;
+        x0 = x1 - 256 * scale;
+        y0 = 3;
+        y1 = y0 + 192 * scale;
+    }
+
+    // Set by the caller before Build: the panel's share of a full-size one, and whether a window of
+    // the game is where the panel goes (it then fades out).
+    float panelSize = kPanelSizeDefault;
+    bool panelCovered = false;
+    int PanelAlpha() const { return panelAlpha_; }
+
+    static constexpr float kPanelSizeDefault = 0.6f;
+    static constexpr int kPanelHold = 10;  // frames with no window over it before it comes back
+    static constexpr int kPanelOut = 37;   // alpha per frame: gone in 7 frames (about 120 ms)
+    static constexpr int kPanelIn = 24;    // back in 11 frames (about 180 ms)
+
 private:
+    int panelAlpha_ = 0, clearFrames_ = 0;
     unsigned frame_ = 0, seen_ = 0;
     int lastBig_ = -1;
     int hx0_ = 0, hy0_ = 0, hx1_ = -1, hy1_ = -1;
