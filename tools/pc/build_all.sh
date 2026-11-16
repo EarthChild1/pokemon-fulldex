@@ -119,6 +119,7 @@ python3 tools/bw2/funcmap.py build-decomp-pokew2/config/w2_us/arm9 - "$DATA/func
 python3 tools/bw1/funcmap.py build-decomp-aletheia/layout/function_addrs.tsv - "$DATA/funcs/IRBO.txt"
 python3 tools/bw1/funcmap.py build-decomp-aletheia/layout/function_addrs.tsv - "$DATA/funcs/IRAO.txt" --white
 cp tools/platinum/CPUE.txt "$DATA/funcs/CPUE.txt"
+cp tools/pmd/C2SE.txt "$DATA/funcs/C2SE.txt" # Explorers of Sky: which part of the game is running (frontend/pmd.h)
 cp tools/platinum/ADAE.txt "$DATA/funcs/ADAE.txt" # Diamond: Platinum's names (tools/port_family.py)
 # The other languages' tables (tools/versions: Spanish White, Platinum, ...), from the English ones.
 python3 tools/shift_table.py --all "$DATA/funcs"
@@ -176,7 +177,7 @@ check_contents() { # list of paths, one per line, relative to the download's top
     python3 -c "
 import re, sys
 regional_codes = '|'.join(p['code'] for p in __import__('json').loads(__import__('pathlib').Path('$HERE/tools/regions/profiles.json').read_text())['profiles'] if p['kind']=='functions')
-ok = re.compile(r'^pokemon-ds-wide/(pokemon-ds-wide|Pokemon Fulldex\.exe|SDL2\.dll|libSDL2-2\.0\.so\.0|LICENSE\.txt|LICENSE-SDL2\.txt|LICENSE-mGBA\.txt|LICENSE-Noto\.txt|FONT-LICENSES\.txt|README\.txt|roms/|data/|3ds/|3ds/program/.*|data/funcs/|data/funcs/(?:IREO|IRDO|IRBO|IRAO|CPUE|ADAE|APAE|ADAS|APAF|APAS|APAD|ADAD|ADAI|IRAS|CPUS|IREF|IRDF|CPUF|IRBF|IRAF|IRBS|IRES|IRDS|' + regional_codes + r')\.txt)?$')
+ok = re.compile(r'^pokemon-ds-wide/(pokemon-ds-wide|Pokemon Fulldex\.exe|SDL2\.dll|libSDL2-2\.0\.so\.0|LICENSE\.txt|LICENSE-SDL2\.txt|LICENSE-mGBA\.txt|LICENSE-Noto\.txt|FONT-LICENSES\.txt|README\.txt|roms/|data/|3ds/|3ds/program/.*|data/funcs/|data/funcs/(?:IREO|IRDO|IRBO|IRAO|CPUE|ADAE|APAE|ADAS|APAF|APAS|APAD|ADAD|ADAI|IRAS|CPUS|IREF|IRDF|CPUF|IRBF|IRAF|IRBS|IRES|IRDS|C2SE|' + regional_codes + r')\.txt)?$')
 game = re.compile(r'(?i)(\.3ds|\.cia|\.cxi|title\.dll|title\.so|rom\.txt)$')  # (nothing of a game, nor code made from one)
 bad = [l for l in sys.stdin.read().splitlines() if l and (not ok.match(l) or game.search(l))]
 if bad: sys.exit('unexpected files in the download: %s' % bad)

@@ -307,7 +307,7 @@ void SetRomFolder(Folders& fo)
 // the emulator, which reads them by file name.
 void ExtractFuncs(const Folders& fo)
 {
-    std::vector<const char*> codes = { "IREO", "IRDO", "IRBO", "IRAO", "CPUE", "ADAE", "IRAS", "CPUS", "ADAS", "APAE", "APAF", "APAS", "APAD", "ADAD", "ADAI", "IREF", "IRDF", "CPUF", "IRBF", "IRAF", "IRBS", "IRES", "IRDS" };
+    std::vector<const char*> codes = { "IREO", "IRDO", "IRBO", "IRAO", "CPUE", "ADAE", "IRAS", "CPUS", "ADAS", "APAE", "APAF", "APAS", "APAD", "ADAD", "ADAI", "IREF", "IRDF", "CPUF", "IRBF", "IRAF", "IRBS", "IRES", "IRDS", "C2SE" };
     for (const auto& p : RegionalProfiles::profiles) if (p.functions) codes.push_back(p.code);
     for (const char* code : codes)
     {
@@ -3856,8 +3856,9 @@ bool Start(int& argc, char**& argv)
 #endif
     // SoulSilver and HeartGold take their layouts from the program's own tables and must not be
     // given a function table (one switches to the Black games' layouts); the others take theirs.
-    // A generic game has none: a table would switch on the Black games' layouts for it too.
-    if (!game.generic && !IsGame(game.code, "IPGE") && !IsGame(game.code, "IPKE"))
+    // A generic game's table, where it has one (Explorers of Sky's: tools/pmd/C2SE.txt), only says which
+    // part of the game is running (main.cpp, pmdWatchOn); without one it plays all the same.
+    if (!IsGame(game.code, "IPGE") && !IsGame(game.code, "IPKE") && (!game.generic || Exists(fo.funcs + "/" + game.code + ".txt")))
     {
         g_args.push_back("--funcs");
         g_args.push_back(fo.funcs + "/" + game.code + ".txt");

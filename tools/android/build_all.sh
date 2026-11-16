@@ -102,6 +102,7 @@ python3 tools/bw2/funcmap.py build-decomp-pokew2/config/w2_us/arm9 - "$FUNCS/IRD
 python3 tools/bw1/funcmap.py build-decomp-aletheia/layout/function_addrs.tsv - "$FUNCS/IRBO.txt"
 python3 tools/bw1/funcmap.py build-decomp-aletheia/layout/function_addrs.tsv - "$FUNCS/IRAO.txt" --white
 cp tools/platinum/CPUE.txt "$FUNCS/CPUE.txt"
+cp tools/pmd/C2SE.txt "$FUNCS/C2SE.txt" # Explorers of Sky: which part of the game is running (frontend/pmd.h)
 cp tools/platinum/ADAE.txt "$FUNCS/ADAE.txt" # Diamond: Platinum's names (tools/port_family.py)
 # The other languages' tables (tools/versions: Spanish White, Platinum, ...), from the English ones.
 python3 tools/shift_table.py --all "$FUNCS"
@@ -277,7 +278,7 @@ PY
 SSR_SRC="$HERE" SSR_KIT="$KIT" python3 - "$APK" <<'PY'
 import re, sys, zipfile
 regional_codes = '|'.join(p['code'] for p in __import__('json').loads(__import__('pathlib').Path(__import__('os').environ['SSR_SRC'], 'tools/regions/profiles.json').read_text())['profiles'] if p['kind']=='functions')
-ok = re.compile(r'^(AndroidManifest\.xml|resources\.arsc|classes\.dex|res/.*\.png|res/mipmap-anydpi-v26/ic_launcher\.xml|lib/(arm64-v8a|x86_64)/lib(main|SDL2)\.so|assets/funcs/(?:IREO|IRDO|IRBO|IRAO|CPUE|ADAE|APAE|ADAS|APAF|APAS|APAD|ADAD|ADAI|IRAS|CPUS|IREF|IRDF|CPUF|IRBF|IRAF|IRBS|IRES|IRDS|' + regional_codes + r')\.txt|assets/FONT-LICENSES\.txt|assets/LICENSE(-mGBA|-Noto)?\.txt)$')
+ok = re.compile(r'^(AndroidManifest\.xml|resources\.arsc|classes\.dex|res/.*\.png|res/mipmap-anydpi-v26/ic_launcher\.xml|lib/(arm64-v8a|x86_64)/lib(main|SDL2)\.so|assets/funcs/(?:IREO|IRDO|IRBO|IRAO|CPUE|ADAE|APAE|ADAS|APAF|APAS|APAD|ADAD|ADAI|IRAS|CPUS|IREF|IRDF|CPUF|IRBF|IRAF|IRBS|IRES|IRDS|C2SE|' + regional_codes + r')\.txt|assets/FONT-LICENSES\.txt|assets/LICENSE(-mGBA|-Noto)?\.txt)$')
 # The 3DS kit: its game, the compiler, the compiler's headers and each game's settings (text).
 kit = re.compile(r'^(lib/arm64-v8a/lib(pocketnative|cc_[a-z0-9]+)\.so|assets/cc/[A-Za-z0-9_./-]+\.h|assets/titles/[0-9A-F]{16}/[A-Za-z0-9_./-]+\.(toml|txt|reach|c))$')
 names = zipfile.ZipFile(sys.argv[1]).namelist()

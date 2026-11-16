@@ -1,0 +1,12 @@
+# Pokemon Mystery Dungeon: Explorers of Sky (North America, C2SE): functions frontend/pmd.h watches.
+# Made by tools/pmd/funcmap.py from pmdsky-debug's symbol tables (MIT licence,
+# https://github.com/UsernameFodder/pmdsky-debug). Addresses only: an overlay function's first
+# bytes (?) are read from the player's ROM.
+022e9fe0 a ov29 ? AdvanceFrame
+022e1854 a ov29 ? DisplayMonstersAndItems
+022e2ec4 a ov29 ? UpdateCamera
+02382b54 a ov31 ? DungeonMenuLoop
+02382fbc a ov31 ? StairsMenuLoop
+022ddd64 a ov11 ? RunNextOpcode
+022dd164 a ov11 ? FuncThatCallsRunNextOpcode
+0238a1c8 a ov13 ? PersonalityTestFrameUpdate

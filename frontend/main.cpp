@@ -122,6 +122,7 @@
 #include "SsrProf.h"
 #include "switch_platform.h"
 #include "funcwatch.h"
+#include "pmd.h" // Pokemon Mystery Dungeon: Explorers of Sky: which part of the game is running
 #if __has_include("portable_images.h")
 #include "portable_images.h"
 #else
@@ -2164,7 +2165,10 @@ int main(int argc, char** argv)
     // A game that is not recompiled: which of its functions run comes from a table and a hook
     // on the interpreter instead of recompiled-code probes.
     static FuncWatch funcWatch;
-    const bool funcWatchOn = !opt.funcs.empty() && funcWatch.Load(opt.funcs);
+    // (A generic game's table, Explorers of Sky's, only says which part of the game is running: none
+    // of the Pokemon games' layouts come on with it. See pmdWatchOn and pmd.h.)
+    const bool funcWatchOn = !opt.funcs.empty() && !genericGame && funcWatch.Load(opt.funcs);
+    const bool pmdWatchOn = !opt.funcs.empty() && genericGame && funcWatch.Load(opt.funcs);
     // A SoulSilver build without the recompiled code (tools/soulsilver/tables_only.py) started
     // without --jit or --interp: the interpreter, rather than calling code that is not there.
     if (nds->ARM9.RecompEnable && !ref && rc_num_chunks && !rc_chunks[0].fn)
@@ -2176,7 +2180,8 @@ int main(int argc, char** argv)
     // overlays run, for the layouts, comes from the core's watch instead (runtime/recomp_rt.cpp).
     // With tables that hold no code of the game (tools/soulsilver/tables_only.py), the overlays'
     // code it compares is read from this ROM first, which tells SoulSilver from HeartGold too.
-    if (!nds->ARM9.RecompEnable && !funcWatchOn && rc_num_chunks && rc_portable_needed())
+    // (Not for a generic game: SoulSilver's probes mean nothing in it, and watching them costs time.)
+    if (!nds->ARM9.RecompEnable && !funcWatchOn && !genericGame && rc_num_chunks && rc_portable_needed())
     {
         struct PortableRom {
             NdsOverlays overlays;
@@ -2214,7 +2219,7 @@ int main(int argc, char** argv)
         else
             fprintf(stderr, "[recomp] cannot read the overlays of %s\n", opt.rom.c_str());
     }
-    if (!nds->ARM9.RecompEnable && !funcWatchOn && rc_num_chunks) rc_watch_attach(*nds);
+    if (!nds->ARM9.RecompEnable && !funcWatchOn && !genericGame && rc_num_chunks) rc_watch_attach(*nds);
     // OTHER VERSION POKEMON: both versions' wild Pokemon tables, from this ROM (exclusives.h).
     static GameMusic gameMusic;
     gameMusic.Attach(*nds);
@@ -3043,6 +3048,13 @@ int main(int argc, char** argv)
         // Only these are watched (all functions for --trace-funcs).
         funcWatch.Attach(*nds, opt.traceFuncsAt.empty() ? bw2Names : std::vector<std::string>());
         fprintf(stderr, "[bw2] field %d, menu %d, bag %d, battle %d\n", bw2.field, bw2.fieldMenu, bw2.bag, bw2.battle);
+    }
+    PmdFuncs pmd; // (Explorers of Sky: which part of the game is running; pmd.h)
+    if (pmdWatchOn)
+    {
+        pmd.Find(funcWatch);
+        funcWatch.Attach(*nds, PmdFuncs::Names());
+        fprintf(stderr, "[pmd] dungeon %d, menu %d, ground %d, personality test %d\n", pmd.advance, pmd.menu, pmd.script, pmd.quiz);
     }
     Scene lastKnownBw2;
     uint32_t lastKnownBw2Frame = 0;
@@ -7427,7 +7439,7 @@ int main(int argc, char** argv)
             // for the next: only the one the shown frame takes, see WideGpuDSLazy.)
             melonDS::WideGpuDSLazy = rc_3d_render_skip = !ffFull && emuSpeed > 1 && i != emuSpeed - 2;
             rc_frame++;
-            if (funcWatchOn) funcWatch.NextFrame();
+            if (funcWatchOn || pmdWatchOn) funcWatch.NextFrame();
             const double f0 = perfNow();
             nds->RunFrame();
             if (emuSpeed > 1)
@@ -10517,17 +10529,29 @@ int main(int argc, char** argv)
         {
             if (genericGame && focus.mode == 0)
             {
-                // No recompiled code says where the game is played: the screen that changes the most.
-                // (The levels go to the log every two seconds, to tune it from a real session.)
-                const bool changed = activityFocus.Update(top, bot);
+                // Explorers of Sky: the part of the game that is running says where it is played
+                // (pmd.h). Otherwise, or where none of its functions runs, the screen that changes the
+                // most (ActivityFocus). (The levels go to the log every two seconds.)
+                const PmdFuncs::Mode mode = pmdWatchOn ? pmd.Current(funcWatch) : PmdFuncs::Unknown;
+                static PmdFuncs::Mode lastMode = PmdFuncs::Unknown;
+                if (mode != lastMode)
+                {
+                    fprintf(stderr, "[pmd] frame %u: %s\n", frame, PmdFuncs::Name(mode));
+                    lastMode = mode;
+                }
+                const int forced = PmdFuncs::LargeScreen(mode);
+                const bool active = activityFocus.Update(top, bot);
+                const bool want = forced >= 0 ? forced == 1 : activityFocus.wantBottom;
+                const bool changed = forced >= 0 ? want != focus.wantBottom : active;
+                activityFocus.wantBottom = want; // (from here on, if the mode is no longer known)
                 if (changed)
                 {
-                    focus.wantBottom = activityFocus.wantBottom;
+                    focus.wantBottom = want;
                     focus.manualFlip = false;
                 }
                 if (changed || frame % 120 == 0)
-                    fprintf(stderr, "[focus] frame %u top %.4f bottom %.4f large %s%s\n", frame, activityFocus.level[0], activityFocus.level[1],
-                            focus.wantBottom ? "bottom" : "top", changed ? " (changed)" : "");
+                    fprintf(stderr, "[focus] frame %u top %.4f bottom %.4f large %s%s%s\n", frame, activityFocus.level[0], activityFocus.level[1],
+                            focus.wantBottom ? "bottom" : "top", forced >= 0 ? " (mode)" : "", changed ? " (changed)" : "");
             }
             else
                 focus.Update(top, bot, fieldNow, appBottom);
