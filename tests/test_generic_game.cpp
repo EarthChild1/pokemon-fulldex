@@ -151,6 +151,22 @@ int main()
             s = g.Build(0, wide, sc2);
             assert(s.items.size() == 1);
         }
+        {
+            // The main screen's world drawn across the view (Explorers of Sky's dungeon): no slide even
+            // for a wide window; the other screen whole, framed, at half size in the top right corner.
+            window(40, 40, 215, 151);
+            GenericComposer g;
+            Scene s;
+            for (int f = 0; f < 30; f++) s = g.Build(1, wide, sc2, true, true);
+            const float R = 128 + wide / 2;
+            assert(g.Slide() == 0.0f && s.items.size() == 2 && s.items[0].screen == 1 && s.items[0].dx == 0);
+            const Element& p = s.items[1];
+            assert(p.screen == 0 && p.sw == 256 && p.sh == 192 && p.drop == 0 && p.border && p.scale == 0.5f);
+            assert(p.dy == 3 && std::abs(p.dx + 256 * p.scale - (R - 3)) < 0.01f);
+            // Not when it shows only more of the world (no text or windows on it): the main screen alone.
+            s = g.Build(1, wide, sc2, true, false);
+            assert(s.items.size() == 1 && s.items[0].screen == 1 && s.items[0].dx == 0);
+        }
     }
 
     // ---- which screen is large ----
