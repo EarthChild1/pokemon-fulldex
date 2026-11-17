@@ -174,21 +174,57 @@ so the fix is in one place.
   tiles the same way, so two scenes can share a map and differ only in video memory. Two samples count as
   the same scene unless more than a quarter differs, so animated tiles (the waterfall) do not rebuild it.
   The last 6 maps are kept. A palette still black at build time (under 3 colours) is retried 15 frames on.
-- **Checked against the screen every frame** (wide2d.h). On 576 points of the screen where a layer with
-  a source is in front, the source must give the screen's colour (within 12 per channel) at 85% of them.
-  If it does not as it stands, the offset that makes it is searched (32 px down, then across). Found
-  because Dialga's sky scrolls up while the game's state is already a few pixels on (frame 3960: every
-  row's sample one gradient step from the screen; the edge-cover estimate then painted bands). If no
-  offset fits (a scene's first frame), the sources are not used that frame (`[wide2d] safety: ...`,
-  at most once a second): the sides keep to what the game has drawn, with the soft colour past it.
+- **Checked against the screen every frame, per layer** (wide2d.h). On up to 576 points of the screen
+  where the layer is in front, its source must give the screen's colour (within 12 per channel). Below
+  90%, the game's window moved on by a chunk is tried: offsets 0 or ±24 across and down, the best used
+  (measured over the whole intro: every real mismatch was a whole chunk, and the two layers of a scene
+  can be a chunk apart on different frames; the earlier free search found wrong offsets on the waves).
+  A layer under 70% at all of them is not used from RAM that frame (`[wide2d] safety: ...`, at most once
+  a second) and nothing of it is drawn beside the screen; a layer that matched the frame before and
+  still matches 45% keeps last frame's offset once (the waterfall's tiles are changed in video memory
+  after the frame is drawn, every 9 frames: it dropped out for a frame each time).
+- **Pictures side by side.** The Nintendo, Pokémon Company, copyright and Chunsoft screens are one
+  792x384 map, a 3x2 grid of 264x192 screens; at the Chunsoft logo the left side showed the white screen
+  next to it. A boundary between pictures is a cell column where all but one of the 8 pixel rows change
+  sharply and the 32 px either side differ on average by 120 (of 765), on a run of 8 cell rows or more,
+  leaving pieces at least 28 cells wide. Rows with the same boundaries form pictures; the one under the
+  screen's middle (`ChunkSource::viewTx`) is the one continued.
+- **Plain pictures.** A picture 85% or more calm cells of its most common colour (the logo and copyright
+  screens) is continued with such cells only: anything else beside it was pieces of its letters. A
+  smooth gradient (Dialga's sky) is not "plain" and keeps its clouds. (Penalising busy cells everywhere
+  was tried and dropped: it kept the trees out of the island's water too.)
+- **Transparency** counts in the matching (64 per pixel where one side has art and the other only the
+  backdrop): the treasure scene's dark painting no longer runs into a black strip.
+- **Groups and sticky fills.** Layers of one size and placement are one picture (the forest's foliage
+  and its dark come from two renderers); layers grouped the frame before stay grouped while their
+  windows are a chunk apart. A layer keeps its last fill for 30 frames while its own map and tiles are
+  the same, so a frame where a layer is missed or the grouping changes does not drop the fill.
+- **The cover** (a black or white overlay carried on from the screen's edge, made for the dungeon's
+  darkness) is, in towns and cutscenes, one value for the whole side: the median of the rows. The game
+  fades those scenes with an overlay, the same on every row, so the sides fade with the screen; the
+  island's light rays, different row by row, painted bands when carried on row by row.
+- **Past what can be drawn** (no fill yet, a distrusted layer): the picture mirrored about its last
+  column, fading toward its edge's soft colour (to 60% at 96 px). The soft colour alone read as streaks.
+
+Frame by frame (18 November): the whole intro (9000 frames, every frame composed, `--shot-every 1`,
+`SSR_WIDE2D_TRACE=1` for each frame's fill and check state) through `tools/pmd/check_temporal.py` (sides
+that jump on a still screen, one-frame flickers) and `check_margins.py`. Temporal flags, first run to
+last: 137, 74, 34, 30. Of the 30 left, 24 are the "Pokémon Mystery Dungeon" logo, a game sprite, flying
+in from beyond the screen (correct), and 6 the fountain-to-island white burst (frames 3435-3441), of which
+one frame (3437, the flash's peak) still shows blocks at the right. Safety activations: 23, then 10, then
+1 (3437). `check_margins.py` flags left: dark art carried on as dark (treasure scene's right, the forest),
+the fountain's dark frames, the main menu's fade.
 
 Diagnostics: `SSR_WIDE_FILL=0` (off), `SSR_WIDE_FILL_DUMP=<dir>` (each map built, with its fill on both
 sides, `fill_<w>x<h>_<seed>.ppm`; mirrored cells tinted red, rows of no picture blue),
-`SSR_WIDE_FILL_DEBUG=1` (key and tile changes every 10 frames), `SSR_WIDE2D_VERIFY=1` (how many on-screen
+`SSR_WIDE_FILL_DEBUG=1` (key and tile changes every 10 frames), `SSR_WIDE2D_TRACE=1` (per frame: each
+layer with a fill F or a map without one S, and the check: matched samples, offset or SAFETY),
+`SSR_WIDE2D_VERIFY=1` (how many on-screen
 world pixels the drawing disagrees with), `SSR_BGMAP_DUMP=1` now also writes `srcmap_<frame>_<unit><bg>.png`
 (a layer's map in RAM drawn with the tiles in video memory). Test: `tests/test_widefill.py` (synthetic
 maps: a periodic texture continued exactly in step, the same fill every time, objects left clear, stacked
-pictures kept apart, wide2d.h drawing through the fill).
+pictures kept apart, two screens side by side cut apart with the one in view continued, wide2d.h drawing
+through the fill).
 
 Not done from the immersive-widescreen prompt, and why:
 
