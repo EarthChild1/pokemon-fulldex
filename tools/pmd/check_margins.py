@@ -11,6 +11,11 @@ frame and side it reports:
                       screen's own 40 px edge band is bright (a margin left undrawn)
   jump<side>:<diff>   the margin next to the screen and the screen's edge band differ in brightness by
                       more than 120 (of 765): a fade or a brightness change applied to one but not the other
+  flat<side>:<rows>   rows where the whole margin is one colour across while the screen beside it has
+                      detail, over more than a quarter of the height (a stretched colour)
+  mirror<side>        the margin next to the screen is the screen's edge reflected (visible symmetry)
+  seam<side>:<cols>   columns of the margin where the picture changes sharply over 60% of the height
+                      (two sources meeting without matching)
 
 Prints nothing for a clean frame; exits 1 if any frame was reported. Screenshots of the game are the
 player's own and stay out of the repository.
@@ -40,6 +45,33 @@ def check(path, width, height):
         diff = abs(near.mean() - edge.mean())
         if diff > 120:
             found.append('jump%s:%.0f' % ('LR'[side], diff))
+
+        # The whole margin and the screen's band of the same width next to it.
+        m0, m1 = (0, left) if side == 0 else (right, width)
+        s0, s1 = (left, left + (m1 - m0)) if side == 0 else (right - (m1 - m0), right)
+        margin = lum[:, m0:m1]
+        screen = lum[:, s0:s1]
+        if margin.shape[1] < 16:
+            continue
+        # flat: rows where the margin is one colour across (a stretch) while the screen beside it
+        # has detail, over more than a quarter of the height.
+        flat_rows = ((margin.std(1) < 3) & (screen.std(1) > 12)).sum()
+        if flat_rows > height // 4:
+            found.append('flat%s:%d' % ('LR'[side], flat_rows))
+        # mirror: the margin next to the screen is the screen's edge reflected (a visible symmetry).
+        w = min(64, margin.shape[1])
+        near_m = lum[:, left - w:left][:, ::-1] if side == 0 else lum[:, right:right + w][:, ::-1]
+        near_s = lum[:, left:left + w] if side == 0 else lum[:, right - w:right]
+        # (Only where the screen's edge has detail across: horizontal bands of water or sky are the
+        # same reflected or not.)
+        if near_s.std(1).mean() > 10 and np.abs(near_m - near_s).mean() < 6:
+            found.append('mirror%s' % 'LR'[side])
+        # seam: a straight vertical line through the margin over most of its height (two sources
+        # meeting without matching).
+        cols = np.abs(np.diff(margin, axis=1)) > 90
+        seams = (cols.mean(0) > 0.6).sum()
+        if seams:
+            found.append('seam%s:%d' % ('LR'[side], seams))
     return found
 
 
