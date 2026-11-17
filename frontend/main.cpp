@@ -9876,6 +9876,18 @@ int main(int argc, char** argv)
                 if (pmdGroundLayers > 0) pmdFill.Update(*nds, unit, pmdSources, extend);
                 const bool drawn = Wide2D::Render(*nds, unit, nds->GPU.Framebuffer[nds->GPU.FrontBuffer][pmdBig].get(), extend, pmdWideBuf,
                     pmdGroundLayers > 0 ? pmdSources : nullptr);
+                // Diagnostics (SSR_WIDE2D_TRACE=1): per frame, how the sides were drawn: each layer with
+                // a map in RAM and a fill (F), a map without a fill yet (S); the check against the screen.
+                if (static const bool trace = getenv("SSR_WIDE2D_TRACE") != nullptr; trace)
+                {
+                    char ls[5] = "----";
+                    for (int b = 0; b < 4; b++)
+                        if (pmdGroundLayers > 0 && pmdSources[b].on) ls[b] = pmdSources[b].fill ? 'F' : 'S';
+                    const Wide2D::LastCheck& c = Wide2D::g_lastCheck;
+                    fprintf(stderr, "[trace] frame %u drawn %d layers %s check %d/%d%s%s\n", (unsigned)frame, drawn, ls, c.good, c.usable,
+                        c.searched ? (c.safety ? " SAFETY" : " offset") : "", c.searched && !c.safety ? (" " + std::to_string(c.dx) + "," + std::to_string(c.dy)).c_str() : "");
+                    Wide2D::g_lastCheck = Wide2D::LastCheck();
+                }
                 // (The time it takes, in the log every 300 frames: [wide2d] ... ms.)
                 {
                     static double sum = 0, worst = 0;

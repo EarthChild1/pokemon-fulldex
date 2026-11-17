@@ -82,14 +82,16 @@ int main()
         WideFill::Build(job, r);
         assert(r.ok && r.pictures == 1);
         const Wide2D::Fill& f = r.fill;
-        assert(f.rows == 27 && f.cols >= 12);
+        assert(f.rows == 27 && f.cols >= 12 && f.pics.size() == 1);
+        const Wide2D::Fill::Picture& pic = f.pics[0];
+        assert(pic.a0 == 0 && pic.a1 == 33 && pic.row0 == 0 && pic.row1 == 27);
         int inStep = 0, total = 0;
         for (int side = 0; side < 2; side++)
             for (int k = 0; k < f.cols; k++)
                 for (int y = 0; y < f.rows; y++)
                 {
                     const uint32_t c = f.cell[side][(size_t)k * f.rows + y];
-                    const int x = side ? f.rowA1[y] + k : f.rowA0[y] - 1 - k; // (the map column it stands for)
+                    const int x = side ? pic.a1 + k : pic.a0 - 1 - k; // (the map column it stands for)
                     total++;
                     inStep += !((c >> 24) & 1) && tile(SourceX(c), SourceY(c)) == tile(((x % 4) + 4) % 4, y);
                 }
@@ -132,19 +134,53 @@ int main()
         WideFill::Build(job, r);
         assert(r.ok && r.pictures == 2);
         const Wide2D::Fill& f = r.fill;
-        assert(f.rowA0[0] == 0 && f.rowA1[0] == 33);
-        assert(f.rowA0[13] == f.rowA1[13]); // (no picture)
-        assert(f.rowA0[20] == 6 && f.rowA1[20] == 27);
-        for (int side = 0; side < 2; side++)
-            for (int k = 0; k < f.cols; k++)
-                for (int y = 0; y < f.rows; y++)
-                {
-                    const uint32_t c = f.cell[side][(size_t)k * f.rows + y];
-                    if (y >= 12 && y < 15) { assert(c & Wide2D::Fill::kClear); continue; }
-                    // Every cell comes from its own picture.
-                    assert((SourceY(c) < 12) == (y < 12));
-                    if (y >= 15) assert(SourceX(c) >= 6 && SourceX(c) < 27);
-                }
+        assert(f.pics[0].a0 == 0 && f.pics[0].a1 == 33 && f.pics[0].row0 == 0 && f.pics[0].row1 == 12);
+        assert(f.pics[1].a0 == 6 && f.pics[1].a1 == 27 && f.pics[1].row0 == 15 && f.pics[1].row1 == 27);
+        assert(f.rowCount[13] == 0); // (no picture)
+        for (int p = 0; p < 2; p++)
+            for (int side = 0; side < 2; side++)
+                for (int k = 0; k < f.cols; k++)
+                    for (int y = f.pics[p].row0; y < f.pics[p].row1; y++)
+                    {
+                        const uint32_t c = f.cell[side][((size_t)p * f.cols + k) * f.rows + y];
+                        // Every cell comes from its own picture.
+                        assert(SourceY(c) >= f.pics[p].row0 && SourceY(c) < f.pics[p].row1);
+                        assert(SourceX(c) >= f.pics[p].a0 && SourceX(c) < f.pics[p].a1);
+                    }
+    }
+
+    // ---- two screens side by side in one map (the Nintendo and Chunsoft logos): cut apart ----
+    {
+        // Columns 0-32: dark tiles 1-12 (palette bank 0); 33-65: bright tiles in palette bank 1.
+        auto tile = [](int tx, int ty) { return tx < 33 ? 1 + tx % 4 + 4 * (ty % 3) : (1 + (tx % 3) + 3 * (ty % 2)) | 0x1000; };
+        WideFill::Job job = MakeJob(66, 27, tile, 12);
+        for (int i = 16; i < 32; i++)
+        {
+            const uint16_t c = (uint16_t)(0x7FFF - (i - 16)); // (near white)
+            memcpy(job.pal + i * 2, &c, 2);
+        }
+        WideFill::Result r;
+        WideFill::Build(job, r);
+        assert(r.ok && r.pictures == 2);
+        const Wide2D::Fill& f = r.fill;
+        assert(f.pics[0].a0 == 0 && f.pics[0].a1 == 33 && f.pics[1].a0 == 33 && f.pics[1].a1 == 66);
+        // With the left screen in view, the map past its right edge is its own pattern carried on, not
+        // the white screen next to it.
+        Wide2D::ChunkSource s = job.src[0];
+        s.fill = &r.fill;
+        s.viewTx = 16;
+        Wide2D::BgVram v;
+        v.copy = &job.vram;
+        for (int y = 0; y < 27 * 8; y += 7)
+            for (int x = 33 * 8; x < 45 * 8; x += 3)
+            {
+                const int want = Wide2D::TilePixel(v, job.layers[0], (uint16_t)tile((x / 8) % 4, y / 8), x & 7, y & 7);
+                assert(Wide2D::SampleChunks(v, job.layers[0], s, x, y) == want);
+            }
+        // With the right one in view, the map left of it is the white screen's fill (palette bank 1).
+        s.viewTx = 50;
+        for (int y = 0; y < 27 * 8; y += 7)
+            for (int x = 20 * 8; x < 33 * 8; x += 5) assert(Wide2D::SampleChunks(v, job.layers[0], s, x, y) >= 16);
     }
 
     // ---- wide2d.h draws through the fill: past the picture, the source cell's pixels ----

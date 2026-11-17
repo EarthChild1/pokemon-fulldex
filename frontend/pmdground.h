@@ -51,11 +51,11 @@ inline int Find(melonDS::NDS& nds, int unitNum, Wide2D::ChunkSource out[4])
     const int n = Wide2D::TextLayers(nds, unitNum, layers);
     Wide2D::BgVram v{ &nds, unitNum };
     int found = 0;
-    for (uint32_t ptr : kStatePtrs)
+    for (const uint32_t& ptr : kStatePtrs)
     {
         const uint32_t bg = Word(nds, ptr);
         if (!InRam(bg)) continue;
-        for (uint32_t at : kRenderAt)
+        for (const uint32_t& at : kRenderAt)
         {
             const uint32_t r = bg + at;
             const int wChunks = (int)Word(nds, r + 8), hChunks = (int)Word(nds, r + 0xC);
@@ -96,6 +96,7 @@ inline int Find(melonDS::NDS& nds, int unitNum, Wide2D::ChunkSource out[4])
                     if (total >= kWindowCols * kWindowRows / 2 && same * 50 >= total * 49 && filled >= 32)
                     {
                         s.on = true;
+                        s.renderer = (int)(&ptr - kStatePtrs) * 2 + (int)(&at - kRenderAt);
                         s.windowCol = kWindowCol;
                         s.windowCols = kWindowCols;
                         out[l.num] = s;
