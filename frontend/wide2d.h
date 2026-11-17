@@ -150,6 +150,20 @@ inline int Sample(const BgVram& v, const Layer& l, int mx, int my)
     return TilePixel(v, l, MapEntry(v, l, sx >> 3, sy >> 3), sx & 7, sy & 7);
 }
 
+// A map carried on past the end of its picture (widefill.h builds it): for each 8x8 cell beside the
+// picture, which cell of the picture is shown there (the map's own art, never made-up colours).
+// Cells are in map tiles; side 0 is left of the picture, 1 right of it.
+struct Fill
+{
+    int cols = 0, rows = 0; // cells beside the picture on each side; the map's rows
+    // Per map row, the columns of its picture, [rowA0, rowA1); none (equal) on a row of no picture.
+    std::vector<int16_t> rowA0, rowA1;
+    // [side][k * rows + ty], k counted outwards from the picture: source tx | ty << 12 | mirrored << 24,
+    // or kClear: nothing of this layer there (a layer of objects over another: not carried on).
+    std::vector<uint32_t> cell[2];
+    static constexpr uint32_t kClear = 1u << 25;
+};
+
 // Where a layer's map comes from beside the screen, when not from video memory: a game that keeps
 // its whole map in main RAM and copies only a window of it to the hardware's map (Explorers of Sky's
 // towns and cutscenes: 3x3-tile chunks, a chunk map 64 chunks across; pmdground.h). For the map
@@ -167,6 +181,8 @@ struct ChunkSource
     // (Kept in sources[0] whether or not that layer has a source: the columns of the hardware map the
     // game draws its window into, for the layers without one. 0: not known.)
     int windowCol = 0, windowCols = 0;
+    // Past the picture's end: the map carried on (widefill.h), or null.
+    const Fill* fill = nullptr;
 
     uint16_t R16(uint32_t a) const
     {
@@ -197,7 +213,25 @@ inline int Tile8(int p) { return p >= 0 ? p >> 3 : -((7 - p) >> 3); }
 // -1 past the edge of a map that does not repeat (there is no more of it).
 inline int SampleChunks(const BgVram& v, const Layer& l, const ChunkSource& s, int sx, int sy)
 {
-    const int mx = s.originX + sx, my = s.originY + sy;
+    int mx = s.originX + sx, my = s.originY + sy;
+    if (s.fill)
+    {
+        // Beside the picture: the cell of the picture the fill shows there (mirrored if so).
+        const Fill& f = *s.fill;
+        const int tx = Tile8(mx), ty = Tile8(my);
+        const int a0 = ty >= 0 && ty < f.rows ? f.rowA0[ty] : 0, a1 = ty >= 0 && ty < f.rows ? f.rowA1[ty] : 0;
+        if (a0 < a1 && (tx < a0 || tx >= a1))
+        {
+            const int side = tx >= a1;
+            const int k = side ? tx - a1 : a0 - 1 - tx;
+            if (k >= f.cols) return -1;
+            const uint32_t c = f.cell[side][(size_t)k * f.rows + ty];
+            if (c & Fill::kClear) return 0;
+            const int px = (c >> 24) & 1 ? 7 - (mx & 7) : mx & 7;
+            mx = (int)(c & 0xFFF) * 8 + px;
+            my = (int)((c >> 12) & 0xFFF) * 8 + (my & 7);
+        }
+    }
     uint16_t e;
     if (!s.Entry(Tile8(mx), Tile8(my), e)) return -1;
     return TilePixel(v, l, e, mx & 7, my & 7);
@@ -278,6 +312,98 @@ inline bool Render(melonDS::NDS& nds, int unitNum, const uint32_t* screen, int e
         auto to8 = [](int v) { return (uint32_t)((v << 2) | (v >> 4)); };
         return (to8(ch[0]) << 16) | (to8(ch[1]) << 8) | to8(ch[2]);
     };
+
+    // Maps in main RAM (sources) are checked against the screen the game drew: while a scene scrolls,
+    // the game's own state can be a few pixels ahead of the frame shown (Explorers of Sky's sky
+    // scrolling up behind Dialga), and a map can even match the hardware's map without being the
+    // picture shown. On a sample of the screen where a world layer with a source is in front, the
+    // source must give the screen's colours; if it does not as it stands, the offset that makes it
+    // is looked for (32 pixels either way, down then across) and used. If none does, the sources are
+    // not used this frame (false: drawn as a scene without them; logged, at most once a second).
+    ChunkSource calibrated[4];
+    if (sources)
+    {
+        const u8* fl = renderer->LayerFlags[unitNum];
+        BgVram vv{ &nds, unitNum };
+        static const int xs[] = { 2, 5, 40, 90, 128, 170, 220, 250, 253 };
+        auto score = [&](int dx, int dy, int& usable) {
+            int good = 0;
+            usable = 0;
+            for (int y = 1; y < 192; y += 3)
+                for (int x : xs)
+                {
+                    const u8 f = fl[y * 256 + x];
+                    if (f & 0xD0) continue;
+                    int li = -1;
+                    for (int i = 0; i < n; i++)
+                        if (f & 0x0F & (1 << layers[i].num)) li = i;
+                    if (li < 0 || !sources[layers[li].num].on) continue;
+                    const Layer& l = layers[li];
+                    const int idx = SampleChunks(vv, l, sources[l.num], lineScroll[y][l.num][0] + x + dx, lineScroll[y][l.num][1] + y + dy);
+                    if (idx <= 0) { usable++; continue; }
+                    const uint32_t a = colour(palette(idx * 2), l.num, y), b = screen[y * 256 + x];
+                    int d = 0;
+                    for (int sh = 0; sh < 24; sh += 8) d = std::max(d, std::abs((int)((a >> sh) & 0xFF) - (int)((b >> sh) & 0xFF)));
+                    usable++;
+                    good += d <= 12;
+                }
+            return good;
+        };
+        int usable = 0, dx = 0, dy = 0;
+        const int good0 = score(0, 0, usable);
+        if (usable >= 40 && good0 * 100 < usable * 85)
+        {
+            int best = good0;
+            for (int t = -32; t <= 32; t++)
+            {
+                int u;
+                const int g = score(0, t, u);
+                if (g > best) { best = g; dy = t; }
+            }
+            if (best * 100 < usable * 85)
+                for (int t = -32; t <= 32; t++)
+                {
+                    int u;
+                    const int g = score(t, dy, u);
+                    if (g > best) { best = g; dx = t; }
+                }
+            static int lastLog = -1000, calls = 0;
+            calls++;
+            if (best * 100 < usable * 85)
+            {
+                if (calls - lastLog >= 60)
+                {
+                    fprintf(stderr, "[wide2d] safety: the game's map in RAM does not give the screen (%d of %d samples; best offset %d,%d: %d)\n",
+                        good0, usable, dx, dy, best);
+                    lastLog = calls;
+                }
+                // (Drawn from the hardware's own map only, the part the game has drawn: past it, the
+                // soft colour of the picture's edge, below.)
+                for (int b = 0; b < 4; b++)
+                {
+                    calibrated[b] = sources[b];
+                    calibrated[b].on = false;
+                }
+                sources = calibrated;
+                dx = dy = 0;
+            }
+            if (getenv("SSR_WIDE2D_DEBUG") && calls - lastLog >= 60)
+            {
+                fprintf(stderr, "[wide2d] map in RAM %d,%d pixels from the screen: corrected (%d of %d samples)\n", dx, dy, best, usable);
+                lastLog = calls;
+            }
+        }
+        if (sources != calibrated)
+        {
+            for (int b = 0; b < 4; b++)
+            {
+                calibrated[b] = sources[b];
+                calibrated[b].originX += dx;
+                calibrated[b].originY += dy;
+            }
+            sources = calibrated;
+        }
+    }
 
     const int outW = 256 + 2 * extend;
     out.resize((size_t)outW * 192);
@@ -361,6 +487,8 @@ inline bool Render(melonDS::NDS& nds, int unitNum, const uint32_t* screen, int e
     for (int sd = 0; sd < 2; sd++)
         for (int yy = 0; yy < 192; yy++) mapEnd[sd][yy] = -1;
     bool pictureAt[128] = {}; // (per side column of the row being drawn: a layer drew there)
+    bool filled = false;
+    for (int b = 0; b < 4 && sources; b++) filled |= sources[b].on && sources[b].fill;
     if (extend > 128) return false;
     // (Pass 0 only finds the first row showing the world at each edge; pass 1 draws.)
     bool firstFound[2] = { false, false };
@@ -398,6 +526,37 @@ inline bool Render(melonDS::NDS& nds, int unitNum, const uint32_t* screen, int e
                 // (A layer with a source is always carried on: its map is known beyond the screen.)
                 use[i] = sources && sources[layers[i].num].on;
                 for (int k = 0; k < 8 && !use[i]; k++) use[i] = sampleAt(i, side ? 255 - k : k) != 0;
+            }
+            // Diagnostics (SSR_WIDE2D_VERIFY): how much of this row, on the screen, the layers drawn here
+            // disagree with what the game drew where a world layer is in front (should be none).
+            if (pass && side == 0 && getenv("SSR_WIDE2D_VERIFY"))
+            {
+                static int bad = 0, total = 0, rows = 0;
+                for (int x = 0; x < 256; x++)
+                {
+                    const u8 fl = flags[y * 256 + x];
+                    if ((fl & 0xD0) || !(fl & 0x0F & worldLayers)) continue;
+                    int topIdx = -1, tl = 0;
+                    for (int i = 0; i < n && topIdx <= 0; i++)
+                    {
+                        if (!(fl & (1 << layers[i].num))) continue;
+                        topIdx = sampleAt(i, x);
+                        tl = i;
+                    }
+                    if (topIdx <= 0) continue;
+                    total++;
+                    const uint32_t a = colour(palette(topIdx * 2), layers[tl].num, y), b = screen[y * 256 + x];
+                    int d = 0;
+                    for (int sh = 0; sh < 24; sh += 8) d = std::max(d, std::abs((int)((a >> sh) & 0xFF) - (int)((b >> sh) & 0xFF)));
+                    bad += d > 12;
+                    if (d > 12 && bad == 1 && getenv("SSR_WIDE2D_VERIFY")[0] == '2')
+                        fprintf(stderr, "[wide2d] verify: first difference at %d,%d: drawn %06X, screen %08X\n", x, y, a, b);
+                }
+                if (++rows == 192)
+                {
+                    fprintf(stderr, "[wide2d] verify: %d of %d world pixels differ from the screen\n", bad, total);
+                    bad = total = rows = 0;
+                }
             }
             if (pass && y == 100 && getenv("SSR_WIDE2D_DEBUG"))
                 for (int i = 0; i < n; i++)
@@ -496,7 +655,9 @@ inline bool Render(melonDS::NDS& nds, int unitNum, const uint32_t* screen, int e
             // (Blank map, the backdrop alone, running into the map's end, or with a map in RAM
             // (sources: a town or a cutscene) to the edge of the view: the picture ends where the
             // last of it is, and MapEnd takes over from there.)
-            if (sources && mapEnd[side][y] < 0)
+            // (Not where the map is carried on past its picture (Fill): there the backdrop beside the
+            // screen is the picture's own, as in it.)
+            if (sources && !filled && mapEnd[side][y] < 0)
                 mapEnd[side][y] = side ? extend : 0;
             if (mapEnd[side][y] >= 0)
             {

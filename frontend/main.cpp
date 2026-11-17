@@ -117,6 +117,7 @@
 #include "wide2d.h" // (a 2D screen drawn wider than the DS shows it: Explorers of Sky)
 #include "pmdwide.h" // (Explorers of Sky: more of a dungeon floor drawn beside the screen)
 #include "pmdground.h" // (Explorers of Sky: its towns' and cutscenes' maps, beside the screen)
+#include "widefill.h"  // (and those maps carried on past the end of their picture)
 #include "recomp_rt.h"
 #include "recomp_api.h"
 #include "GPU3D_Wide.h"
@@ -3993,6 +3994,7 @@ int main(int argc, char** argv)
     bool pmdWorld = false, pmdPanel = true;
     int pmdBig = 1, pmdGroundLayers = 0;  // (the large screen; how many of its layers pmdground.h found)
     Wide2D::ChunkSource pmdSources[4];
+    WideFill::Manager pmdFill;
     auto pickSceneGeneric = [&](float viewWidth, const ScreenImage* screens) {
         return genericComposer.Build(focus.Swapped() ? 1 : 0, viewWidth, screens, pmdWorld && viewWidth >= 300, pmdPanel);
     };
@@ -9871,6 +9873,7 @@ int main(int argc, char** argv)
                 const int extend = std::min(PmdWide::kExtraColumns * 8, (int)std::ceil((vw - 256) / 2));
                 const int unit = pmdBig ? 1 - topUnitOf() : topUnitOf();
                 const double wt0 = perfNow();
+                if (pmdGroundLayers > 0) pmdFill.Update(*nds, unit, pmdSources, extend);
                 const bool drawn = Wide2D::Render(*nds, unit, nds->GPU.Framebuffer[nds->GPU.FrontBuffer][pmdBig].get(), extend, pmdWideBuf,
                     pmdGroundLayers > 0 ? pmdSources : nullptr);
                 // (The time it takes, in the log every 300 frames: [wide2d] ... ms.)
@@ -11856,6 +11859,26 @@ int main(int argc, char** argv)
                     char mname[64];
                     snprintf(mname, sizeof(mname), "/bgmap_%06u_%c%d.png", frame, unit == 0 ? 'A' : 'B', ls[i].num);
                     WritePNG(opt.shotDir + mname, map.data(), ls[i].mapW, ls[i].mapH);
+                    // And a layer's map in main RAM (pmdground.h), drawn with the tiles in video
+                    // memory now: srcmap_<frame>_<unit><bg>.png.
+                    const Wide2D::ChunkSource& s = pmdSources[ls[i].num];
+                    if (s.on && s.widthTiles > 0 && s.heightTiles > 0)
+                    {
+                        const int w = s.widthTiles * 8, h = s.heightTiles * 8;
+                        std::vector<uint32_t> img((size_t)w * h);
+                        Wide2D::BgVram v{ nds.get(), unit };
+                        for (int y = 0; y < h; y++)
+                            for (int x = 0; x < w; x++)
+                            {
+                                uint16_t e;
+                                int idx = s.Entry(x >> 3, y >> 3, e) ? Wide2D::TilePixel(v, ls[i], e, x & 7, y & 7) : 0;
+                                melonDS::u16 c;
+                                memcpy(&c, r2d.PalSnap[unit] + idx * 2, 2);
+                                img[(size_t)y * w + x] = idx ? Wide2D::Rgb(c) : 0xFF00FF;
+                            }
+                        snprintf(mname, sizeof(mname), "/srcmap_%06u_%c%d.png", frame, unit == 0 ? 'A' : 'B', ls[i].num);
+                        WritePNG(opt.shotDir + mname, img.data(), w, h);
+                    }
                 }
             }
         }
