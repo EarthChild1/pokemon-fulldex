@@ -2,9 +2,67 @@
 
 Written for: the project owner, to pick up the next step.
 
-Updated 18 November 2026. Branch `feature/pmd-explorers-of-sky`. Pushed to origin up to `dd535cd`.
+Updated 21 November 2026. Branch `feature/pmd-explorers-of-sky`. Pushed to origin.
 
 **Core rule (owner's):** commit and push after every change.
+
+## Pre-flight decisions (21 November 2026)
+
+Done before any phase work, per the commence prompt (section 3). Evidence is the command and its output.
+
+- **PF-0 workspace.** Branch `feature/pmd-explorers-of-sky`, head `2ea978a` (2026-11-18 01:16 +1100, "STATUS.md: full
+  history from the session transcripts..."). Working tree clean except the untracked reference APK folder
+  `Pokemon fulldex apk/` (owner's, never committed).
+- **PF-1 upstream.** `git remote add upstream https://github.com/mamesj/pokemon-fulldex`;
+  `git remote set-url --push upstream DISABLED`; `git fetch upstream`. **Authoritative developer head:
+  `e0de264` (2026-11-20 09:00 UTC, "CHANGELOG: Vulkan for the 3DS games on Linux and Android, and what Auto
+  picks").** The older prompts named `928f47b` and `fbf6cf8`; both are superseded. Since `4607874`: upstream 189
+  commits, 256 files (+48714 -1195); this branch 18 commits, 32 files (+3878 -34). Phases 1 and 2 do not rebase onto
+  it; phase 3 ports onto it (re-fetched at 3.1 and 3.6).
+- **PF-2 reference file.** `build_environment_setup_prompt.md` searched in `D:\AI\APPS DEV`, `D:\WSL\scratch` and
+  the scratchpad: **not found.** Reference file not provided; the commence prompt restates the rules that apply.
+  Not blocking.
+- **PF-3 commands and facts, checked at `upstream/main` (`git show upstream/main:<path>`).**
+  1. `--wide-gpu` / `--no-wide-gpu`: `frontend/main.cpp` usage line 775, parser lines 858 and 873. Present.
+  2. `--set k=v`: parser line 853, applied by `cfg.Apply(kv)` at line 2484; `aspect=` is a config key (read
+     line 1818, written line 1926: `auto`, `16:9`, `16:10`, `3:2`, `4:3`). So `--set aspect=16:9` works.
+  3. Default window: lines 2728-2729, `1280` x `720` in the PC launcher build unless a saved `window=WxH`
+     (read line 1872, written line 1947, updated on resize line 9799) is at least 320 x 240.
+  4. `--scale`: default 3 (line 734, parser 835), multiplies `LayoutNativeSize` (line 2721); the PC launcher build
+     overrides it with the 1280 x 720 rule above.
+  5. `g_mergedAspect = aspectValue[clamp(cfg.aspect,0,4)]` line 11330; ASPECT RATIO picker line 6600 with
+     AUTO, 16:9, 16:10, 3:2, 4:3.
+  6. `tools/pc/build_all.sh`: function tables into `$DATA/funcs` (line 110 on), copied to each package's
+     `data/funcs` (line 159); a content check `check_contents` (line 175) with an allow-list regex of table names
+     (line 179) applied to the zip and tarballs. Packages: `pokemon-ds-wide-pc-windows-x86_64.zip`,
+     `pokemon-ds-wide-pc-linux-x86_64.tar.gz`, `pokemon-ds-wide-pc-linux-aarch64.tar.gz` and `.AppImage`.
+  7. `tools/pc/README.txt` line 6, "It plays your own copies of:" then one line per game family.
+  8. `tools/make_appimage.sh`, `tools/updater/write_checksums.py`, `tools/pc/mingw-w64.cmake`,
+     `tools/pc/sdl2-mingw`: all present.
+  9. Tests: `.github/workflows/native.yml` runs `python -m unittest discover -s tests -v` then
+     `python tests/native_smoke.py --build-dir <dir>` (Linux, macOS and Windows/MSYS2 jobs).
+  10. MinGW: was missing; installed in WSL with `apt-get install -y g++-mingw-w64-x86-64`.
+      `x86_64-w64-mingw32-g++-posix` = GCC 13-posix (the cmake file wants the posix variant).
+- **PF-4 environment.** WSL1 Ubuntu 24.04 (kernel 4.4.0-19041-Microsoft), 16 cores. OpenJDK 17.0.21. Android SDK
+  `/root/android-sdk`: build-tools 34.0.0, android-34, NDK 27.2.12479018. cmake, ninja, g++, Pillow 10.2.0 present;
+  clang absent. `build-native-pmd/ssrecomp` present (built 18 Nov). ROMs in `rom\` (names only): the Explorers of
+  Sky (US) `.nds` and `.7z`, SoulSilver (USA) `.nds` and `.zip`. `adb devices` (Windows adb): **the phone is not
+  attached; an Android emulator is** (`emulator-5554`, `sdk_gphone64_x86_64`, Android 17, ABIs `x86_64,arm64-v8a`,
+  1080 x 2400 = 20:9 like the phone). The APK already ships `x86_64`, so the emulator is used for Android runs while
+  the phone is away. **Emulator results are not phone results**; every phone gate stays open for the owner.
+- **PF-5 push rule.** Commit and push every change, to `origin` only. Older "do not push" guidance is void.
+- **PF-6 commit trailers.** The commence prompt says no model name in pushed text and to use a `Claude-Session`
+  trailer. That session link is not this session's (this is a local VS Code session with no claude.ai/code link),
+  so writing it would attribute the work to the wrong session. **From here on commits carry no trailer** until the
+  owner decides. Earlier commits (up to `2ea978a`) carry `Co-Authored-By` with a model name; they are pushed and
+  are not rewritten.
+- **Open owner decisions.**
+  1. Should a model name (a `Co-Authored-By` line) appear in commit trailers? And should a session trailer be
+     used at all? Until answered: none.
+  2. Phone gates (1.1 to 1.5 and phase 1 done): wait for the phone. The commence prompt says phase 2 starts only after
+     every phase 1 gate, including the phone; the owner's 21 Nov instruction is to work around the phone. **Reading
+     taken:** finish every phase 1 task that does not need the phone (headless harness and emulator), collect the
+     phone checks into one batch, and keep going in order; the phone-confirmation lines stay "waiting for owner".
 
 **Sources used for this file:** git history of the branch (`git log main..feature/pmd-explorers-of-sky`), the
 four session transcripts in `C:\Users\Home\.claude\projects\d--AI-APPS-DEV-pokemon-fulldex\` (15 to 18 November),
