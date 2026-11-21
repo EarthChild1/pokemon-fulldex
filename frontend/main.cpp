@@ -10673,7 +10673,8 @@ int main(int argc, char** argv)
                     fprintf(stderr, "[pmd] frame %u: %s\n", frame, PmdFuncs::Name(mode));
                     lastMode = mode;
                 }
-                const int forced = PmdFuncs::LargeScreen(mode);
+                int forced = PmdFuncs::LargeScreen(mode);
+                if (mode == PmdFuncs::Quiz) forced = ActivityFocus::LargeUnlessBlank(forced, top, bot, focus.wantBottom);
                 const bool active = activityFocus.Update(top, bot);
                 const bool want = forced >= 0 ? forced == 1 : activityFocus.wantBottom;
                 const bool changed = forced >= 0 ? want != focus.wantBottom : active;

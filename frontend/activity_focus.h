@@ -71,6 +71,26 @@ public:
         return false;
     }
 
+    // The large screen a game's mode asks for (forced: 0 top, 1 bottom), unless that screen shows
+    // nothing at all while the other one shows something: then the other one. (Explorers of Sky's
+    // personality test writes its opening lines on the touch screen with the top one blank: the top
+    // screen large was a black view.) Both blank, a fade: the screen shown now stays.
+    static int LargeUnlessBlank(int forced, const uint32_t* top, const uint32_t* bot, bool bottomNow)
+    {
+        if (forced < 0 || !top || !bot) return forced;
+        const bool blank[2] = { Blank(top), Blank(bot) };
+        if (blank[forced] && blank[1 - forced]) return bottomNow ? 1 : 0;
+        return blank[forced] ? 1 - forced : forced;
+    }
+
+    static bool Blank(const uint32_t* fb)
+    {
+        const uint32_t c = fb[0] & 0xFFFFFF;
+        for (int i = 1; i < 256 * 192; i++)
+            if ((fb[i] & 0xFFFFFF) != c) return false;
+        return true;
+    }
+
 private:
     static constexpr int kStepX = 4, kStepY = 2;
     static constexpr size_t kSamples = (256 / kStepX) * (192 / kStepY);

@@ -241,5 +241,18 @@ int main()
         }
         assert(!a.wantBottom);
     }
+    {
+        // A mode's large screen, unless it is blank and the other is not (the personality test's
+        // opening lines on the touch screen, the top one black). Both blank: the one shown stays.
+        std::vector<uint32_t> blank(256 * 192, 0x000000), text(256 * 192, 0x000000);
+        for (int x = 40; x < 200; x++) text[150 * 256 + x] = 0xF8F8F8;
+        assert(ActivityFocus::LargeUnlessBlank(0, blank.data(), text.data(), false) == 1);
+        assert(ActivityFocus::LargeUnlessBlank(0, text.data(), blank.data(), true) == 0);
+        assert(ActivityFocus::LargeUnlessBlank(0, text.data(), text.data(), true) == 0);
+        assert(ActivityFocus::LargeUnlessBlank(0, blank.data(), blank.data(), true) == 1);
+        assert(ActivityFocus::LargeUnlessBlank(0, blank.data(), blank.data(), false) == 0);
+        assert(ActivityFocus::LargeUnlessBlank(1, text.data(), blank.data(), true) == 0);
+        assert(ActivityFocus::LargeUnlessBlank(-1, blank.data(), text.data(), false) == -1);
+    }
     puts("generic game layout and focus passed");
 }
