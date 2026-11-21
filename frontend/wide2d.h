@@ -447,10 +447,11 @@ inline bool Render(melonDS::NDS& nds, int unitNum, const uint32_t* screen, int e
                 g_lastCheck.searched = true;
             }
             // (A layer that matched the frame before and still matches near half: animated tiles the
-            // game changed in video memory after drawing the frame (the waterfall, every 9 frames). Kept
-            // as it was the frame before, rather than drop out for one frame.)
+            // game changed in video memory after drawing the frame (the waterfall, every 9 frames), or a
+            // flash over part of the screen for a frame (the fountain-to-island burst, 40% at frame 3437).
+            // Kept as it was the frame before, rather than drop out for one frame.)
             bool graced = false;
-            if (best * 100 < usable * 70 && best * 100 >= usable * 45 &&
+            if (best * 100 < usable * 70 && best * 100 >= usable * 30 &&
                 (trusted[unitNum][b] == frameNo - 1 || gracedAt[unitNum][b] == frameNo))
             {
                 bx = trustedAt[unitNum][b][0];
