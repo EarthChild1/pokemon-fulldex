@@ -48,9 +48,17 @@ def read_png(path):
     return w, h, rows, bpp
 
 
-def bright_pixels(path):
+def count_pixels(path, test):
     w, h, rows, bpp = read_png(path)
-    return sum(1 for r in rows for x in range(w) if max(r[x * bpp:x * bpp + 3]) > 160)
+    return sum(1 for r in rows for x in range(w) if test(max(r[x * bpp:x * bpp + 3])))
+
+
+def bright_pixels(path):
+    return count_pixels(path, lambda v: v > 160)
+
+
+def dark_pixels(path):
+    return count_pixels(path, lambda v: v < 64)
 
 
 class EosNewGameTests(unittest.TestCase):
@@ -60,18 +68,21 @@ class EosNewGameTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             script = Path(folder) / 'input.txt'
             # From power-on: A every 16 frames (the title, New Game, then the opening lines).
-            script.write_text(''.join(f'{a} {a + 3} A\n' for a in range(300, 1700, 16)))
+            script.write_text(''.join(f'{a} {a + 3} A\n' for a in range(300, 2200, 16)))
             env = dict(os.environ, SDL_VIDEODRIVER='dummy', SDL_AUDIODRIVER='dummy')
-            shots = [1350, 1450, 1550]
+            lines, questions = [1350, 1450, 1550], [1900, 2100]
             r = subprocess.run([BINARY, ROM, '--headless', '--no-save', '--jit', '--funcs', str(ROOT / 'tools/pmd/C2SE.txt'),
-                                '--frames', '1600', '--input', str(script), '--shot-dir', folder,
-                                '--shot-at', ','.join(map(str, shots)), '--compose', '1600x720'],
+                                '--frames', '2150', '--input', str(script), '--shot-dir', folder,
+                                '--shot-at', ','.join(map(str, lines + questions)), '--compose', '1600x720'],
                                capture_output=True, text=True, env=env, timeout=600)
             self.assertEqual(r.returncode, 0, r.stderr[-2000:])
             self.assertIn('personality test', r.stderr)
-            for f in shots:
+            for f in lines:
                 # (The lines are white letters on black: a few hundred bright pixels at 1600x720.)
                 self.assertGreater(bright_pixels(Path(folder) / f'frame_{f:06d}.png'), 200, f'frame {f}: a black view')
+            for f in questions:
+                # A question's dark text box (on the touch screen) is in view, not only the light backdrop.
+                self.assertGreater(dark_pixels(Path(folder) / f'frame_{f:06d}.png'), 20000, f'frame {f}: no question in view')
 
 
 if __name__ == '__main__':

@@ -10674,7 +10674,13 @@ int main(int argc, char** argv)
                     lastMode = mode;
                 }
                 int forced = PmdFuncs::LargeScreen(mode);
-                if (mode == PmdFuncs::Quiz) forced = ActivityFocus::LargeUnlessBlank(forced, top, bot, focus.wantBottom);
+                // (The personality test: the screen with its windows; between them the one shown, unless
+                // it is blank and the other is not, as with its opening lines.)
+                if (mode == PmdFuncs::Quiz)
+                {
+                    forced = PmdFuncs::WindowScreen(nds->MainRAM, nds->MainRAMMask, topUnitOf());
+                    if (forced < 0) forced = ActivityFocus::LargeUnlessBlank(focus.wantBottom ? 1 : 0, top, bot, focus.wantBottom);
+                }
                 const bool active = activityFocus.Update(top, bot);
                 const bool want = forced >= 0 ? forced == 1 : activityFocus.wantBottom;
                 const bool changed = forced >= 0 ? want != focus.wantBottom : active;

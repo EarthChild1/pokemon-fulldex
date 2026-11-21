@@ -51,7 +51,8 @@ struct PmdFuncs
     // The screen the game is played on in a mode: 0 top, 1 bottom, -1 not known (the activity decides).
     // The dungeon and its menus are on the bottom screen (the top one shows what the player chose for
     // it: the controls, the team's stats, the message log or the map); so is ground mode (towns, the
-    // guild, cutscenes); the personality test asks its questions on the top one.
+    // guild, cutscenes). The personality test's backdrop is on both: there the screen with its windows
+    // decides (WindowScreen), the top one until it has any.
     static int LargeScreen(Mode m)
     {
         switch (m)
@@ -100,6 +101,23 @@ struct PmdFuncs
             o.y1 = o.y0 + w[7] * 8;
         }
         return n;
+    }
+
+    // The screen the game's windows are on, as LargeScreen gives it (0 top, 1 bottom; -1 none). The
+    // personality test asks its questions, with their answers, in windows on the touch screen, over the
+    // same backdrop as the top one's, and gives its result in one on the top screen (that one wins
+    // while both are up, as the result comes in). `topEngine`: the engine on the top screen (0 is A).
+    static int WindowScreen(const uint8_t* ram, uint32_t mask, int topEngine)
+    {
+        Window w[kWindows];
+        const int n = Windows(ram, mask, w);
+        int s = -1;
+        for (int i = 0; i < n; i++)
+        {
+            if (w[i].screen == topEngine) return 0;
+            s = 1;
+        }
+        return s;
     }
 
     static const char* Name(Mode m)
