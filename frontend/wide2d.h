@@ -311,14 +311,16 @@ inline uint32_t AlphaBlend(uint32_t a, uint32_t b, int eva, int evb)
     return r;
 }
 
+constexpr int kHoleMax = 16; // pixels: a gap in the art beside the screen this wide or less is closed up
+
 // The screen of engine `unitNum` with `extend` columns drawn on each side: the screen as the game
 // drew it in the middle (`screen`, 256x192), and beside it every background layer whose map is 512
 // pixels wide (one the game scrolls across a larger picture: a dungeon floor, and its grid; not the
 // text windows and status lines, whose maps are the screen's size) and the sprites standing past
 // the edges, with each line's scroll, the frame's palettes and sprite table, and the brightness
 // each line was drawn with. Beside the screen is outside all of the game's windows. Not drawn there:
-// rotating, bitmap and 256-colour (extended palette) layers and sprites, mosaic, and blending
-// between layers. `out` is (256 + 2 * extend) x 192, XRGB. False (out untouched) if the screen is not
+// rotating, bitmap and 256-colour (extended palette) layers and sprites, mosaic, and sprites blended
+// with what is under them (layers blended with each other are: BLDCNT effect 1). `out` is (256 + 2 * extend) x 192, XRGB. False (out untouched) if the screen is not
 // drawn the usual way or has no such layer. `sources` (4, by background number; may be null): layers
 // whose map beside the screen comes from the game's own map in main RAM (ChunkSource) rather than
 // from video memory, where the game keeps only the screen's window of it.
@@ -580,6 +582,10 @@ inline bool Render(melonDS::NDS& nds, int unitNum, const uint32_t* screen, int e
     for (int sd = 0; sd < 2; sd++)
         for (int yy = 0; yy < 192; yy++) mapEnd[sd][yy] = -1;
     bool pictureAt[128] = {}; // (per side column of the row being drawn: a layer drew there)
+    bool holeAt[128] = {};    // (and: only the backdrop there, inside the map)
+    // Whether the screen shows the backdrop anywhere (LayerClass: no layer, 3D or sprite drew there).
+    bool screenBackdrop = false;
+    for (int i = 0; i < 256 * 192 && !screenBackdrop; i += 3) screenBackdrop = !(flags[i] & 0xDF);
     bool filled = false;
     for (int b = 0; b < 4 && sources; b++) filled |= sources[b].on && sources[b].fill;
     if (extend > 128) return false;
@@ -765,6 +771,7 @@ inline bool Render(melonDS::NDS& nds, int unitNum, const uint32_t* screen, int e
                 int found;
                 uint32_t c = world(x, found);
                 pictureAt[k] = found < 4;
+                holeAt[k] = found == 4;
                 if (found == 5)
                 {
                     // Past the map: filled in below (MapEnd). Sprites still go on top.
@@ -782,6 +789,28 @@ inline bool Render(melonDS::NDS& nds, int unitNum, const uint32_t* screen, int e
                     c = mix(16) | mix(8) | mix(0);
                 }
                 row[x + extend] = c;
+            }
+            // Holes in the art: where the screen shows no backdrop anywhere (its picture covers it), the
+            // backdrop beside it, inside the map, is a gap the game never shows (the sunset sea's map is
+            // three copies of the sea with an empty column between them: black strips beside the screen).
+            // A thin one takes the column next to it, nearer the screen; a wide one is where the picture
+            // ends (MapEnd).
+            if (sources && !screenBackdrop)
+            {
+                int run = 0;
+                for (int j = 0; j < extend; j++)
+                {
+                    const int k = side ? j : extend - 1 - j; // (j: columns out from the screen)
+                    const int x = side ? 256 + k : -extend + k;
+                    if (!holeAt[k] || objPrio[(size_t)y * sideW + sideIndex(x)] < 4) { run = 0; continue; }
+                    if (++run > kHoleMax)
+                    {
+                        const int start = side ? k - run + 1 : k + run - 1;
+                        mapEnd[side][y] = side ? start : start + 1;
+                        break;
+                    }
+                    row[x + extend] = row[x + extend + (side ? -1 : 1)];
+                }
             }
             // (Blank map, the backdrop alone, running into the map's end, or with a map in RAM
             // (sources: a town or a cutscene) to the edge of the view: the picture ends where the
