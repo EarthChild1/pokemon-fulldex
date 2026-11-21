@@ -278,6 +278,34 @@ windows never reach it; at 16:9 it overlaps x 219-256 and steps aside for the me
 No pixel-based fallback: the window list is read from the one supported version only, confirmed at run
 time; a pixel detector would mistake the HUD line for a window.
 
+## The side fill against the owner's design (audit, task 1.3)
+
+Read from the code at `c44521e` (not from the notes). Built: done as designed. Partly: what is there and what
+is missing. Not built: nothing of it yet.
+
+| Item | State | Where, and what is missing |
+|---|---|---|
+| Tier A, real game data | partly | Dungeon floor 12 columns a side (`pmdwide.h`, overlay 29 patched); towns, cutscenes, intro and title maps from main RAM (`pmdground.h` `PmdGround::Find`, `Wide2D::ChunkSource`), checked against the screen every frame at the chunk offsets (`Wide2D::Render`, `score`). Missing: sprites the game culls 6 tiles from the camera; the 3D layer beside the screen (dungeon darkness). |
+| Tier B, scroll memory | not built | Nothing keeps columns that scrolled out of view. |
+| Tier C, per-layer extension | partly | `widefill.h`: texture continuation from the picture's own 8x8 cells (neighbourhood matching, rows near their own, the scene's hash breaking ties, built once per map on a worker thread, last 6 maps kept); the cells are named, so the palette, animation and brightness are the frame's. Missing: a rule per layer (layers are grouped into one picture and continued alike); colour or gradient continuation, periodic tiling and silhouette extension as rules of their own; a confidence per column for a selector; anything for layers with no map in RAM. |
+| Tier D, smart mirror | partly | Two mirrors: the cell mirror in `widefill.h` (`kMirrorCost`, where no cell fits) and `MapEnd` in `wide2d.h` (mirrored about the last column, fading to the soft colour of the last 8 columns, 96 px out). Missing: seeded per-region offsets, a feathered seam, blending into tier C; text and windows are mirrored as well (P1). |
+| Selector | not built | The source is fixed by order: map in RAM, else the fill, else `MapEnd`. No per-column score, no blend band where the source changes, no hysteresis (only the fill kept 30 frames, `kStickyFrames`, and one graced frame of the RAM check). |
+| Scene profiles, generic derivation | not built | |
+| Authoring lab (contact sheets) | not built | |
+| Procedural extras | not built | |
+| 1. Ambient safety layer, logged | partly | `safety` is logged when a map in RAM does not give the screen (at most once a second, without the scene, column or reason); the side then keeps to what the game drew, with no blur layer under it. |
+| 2. Cross-fade, backdrop start, clear on size change, never partly filled | partly | Each frame's margins are drawn whole (`out` resized and written in full). When `Render` gives up (no world layer), the composer switches to its bars at once: no cross-fade; nothing starts from the scanline's backdrop. |
+| 3. Frame tagging | partly | Not pipelined (Android, PC, headless) the margins are drawn after the frame from the same console state as the screen beside them. Pipelined (`SSR_PIPELINE`, the Switch by default) not checked; no serial is compared. |
+| 4. The game's darkness | partly | A black or white cover measured on the screen's 4 outermost world pixels and carried on, per row in dungeons (`coverA`). Not the game's own lighting; the dark beyond the room walls is the 3D layer, not drawn beside the screen. |
+| 5. Per-scanline effects | partly | Per line: scroll, the brightness effect (BLDCNT effect 2/3 with EVY) per layer, master brightness. Missing: alpha blending between layers (effect 1), windows beside the screen, mosaic. |
+
+Problems seen on the emulator (21 Nov) that the work has to remove:
+- P1. Text mirrored into the sides: the personality test's opening lines ("erofeB"), the Bow's text box.
+- P2. The personality test's backdrop: a hard seam at the 4:3 edge, the sides out of phase and brighter; in
+  the Bow step flat horizontal stripes.
+- P3. The beach at sunset (bubbles): a black vertical strip near the right edge, the row of clouds beside it
+  at another height.
+
 ## Checks and timings
 
 - `python3 tools/pmd/check_margins.py <dir>`: over composed 1600 x 720 frames, flags black blocks next to
@@ -297,6 +325,7 @@ time; a pixel detector would mistake the HUD line for a window.
 
 `PmdFuncs` (pmd.h) names the mode from functions in `tools/pmd/C2SE.txt`. Dungeon, its menus and ground mode
 make the bottom screen large (the earlier build had the dungeon's top screen large, which put the controls
-page in the middle: the owner's symptom S1); the personality test the top. In a dungeon (with the change
+page in the middle: the owner's symptom S1); the personality test the screen with its windows (see "A new
+game's first screens"). In a dungeon (with the change
 made) and in ground mode the world fills the view (`Scene::wide`, a placed `WideImage`), and the top screen
 is a framed half-size panel in the top right corner while it has text or windows on it.
