@@ -71,6 +71,63 @@ numbers come from those sources. Where a result was not checked on the phone, it
 
 ---
 
+## Phase 1 (Android), from 21 November 2026
+
+### How Android is tested while the phone is away
+
+- An Android emulator of my own: AVD `eos_api37` (Android 17, x86_64, 1080 x 2400 = 20:9 like the phone), in
+  `D:\AI\DevToolsndroid-uservd`, run without a window on port 5556. (`emulator-5554` belongs to another
+  project's session; my install and ROM copy there were removed.)
+- Two emulator-only limits, both in the developer's code and not changed on this branch:
+  1. The launcher divides by zero when a mouse event arrives before its first draw (`Launcher::Layout`,
+     `frontend/launcher.h`, from `PickGame`; the emulator's virtual mouse sends one). Same code upstream. The
+     emulator builds carry a one-line guard that is **never committed** (`D:\WSL\scratch\p1\emu_test.sh`).
+  2. WORLD ON GPU needs OpenGL ES 3.1; the emulator's has 3.0, and the app crashes (SIGSEGV) after
+     `EGL_BAD_CONFIG: no ES 3.1 support` instead of falling back. Emulator runs use `wide_gpu=0`, `ds3d_gpu=0`.
+     The phone (Mali-G78, ES 3.2) is not affected, but the phone's graphics path is not tested by the emulator.
+- Every emulator result below is an emulator result. Phone gates stay open for the owner.
+
+### Task 1.1: the fresh New Game black view
+
+- **Cause found, fixed, pushed:** `d2df393`, `3f1e848`, notes `c44521e` (docs/EOS-NOTES.md, "A new game's first
+  screens"). The personality test writes its opening lines and asks its questions on the **touch** screen,
+  with the top screen black or only a backdrop; the top screen was the large one, so the view was black and
+  then had no question. The game was running and waiting for A. Now the screen with the game's windows is
+  large (the top one for the result), and the touch screen while the top one is blank.
+- **Not a regression:** black at `68d995a` too (emulator). The phone run of `68d995a` got through by pressing
+  on blind. No first bad commit; the rule dates from `06f79df`.
+- **Tests:** `tests/test_generic_game.cpp` (ROM-free), `tests/test_eos_new_game.py` (ROM-gated: failed before,
+  passes after, headless, WSL).
+- **Checked on the emulator** (build `3f1e848` + the test guard): New Game, "Welcome!", the questions with
+  their answers, the Bow (a touch on the panel reaches the game: `[touch] 2160,540: ... touch screen 127,96`),
+  the result, the naming, then the first ground scene (`[pmd] frame 19055: ground`).
+- **Waiting for the owner (phone):** see the checklist below, items 1 to 4.
+
+Found on the way (for tasks 1.3 and 1.4):
+- P1. Opening lines and text boxes are **mirrored into the sides** ("erofeB" beside "Before you depart...";
+  the Bow's "Don't move your finger" box mirrored left and right).
+- P2. Personality-test backdrop: the sides have a hard seam at the view's 4:3 edge and a different phase and
+  brightness from the middle; in the Bow step, flat horizontal stripes.
+
+### Phone checklist (one batch, when the phone is plugged in)
+
+APK: `D:\WSL\scratch\p1pk\eos-c445.apk` (head `c44521e`; arm64-v8a and x86_64; signature ok; 16 KB alignment
+ok; `assets/funcs/C2SE.txt` present; no `.nds` or `.sav`; SHA-256 `7e34c7de...ab1e`). Install with
+`adb install -r` (keeps the save). Then, scene by scene, say for each: sides convincing (yes/no); any seam,
+mirror, stretch, black block or banding (where, when); second screen size and hiding (right/wrong); anything else.
+
+1. A loaded save still plays (task 1.1 gate).
+2. A fresh New Game from a clean start (Manage Saves: back up the save first, then start new): "Welcome!" and
+   the lines are shown, the questions show their answers, the Bow can be pressed, the naming, the first scene.
+3. Boot and Chunsoft logo; copyright screens; title cave (let the title run once).
+4. The intro: storm, waves, beach, the fountain and island scenes.
+5. New Game menu over the Grovyle artwork; the black text screens.
+6. Personality test; naming; the beach dialogue.
+7. First dungeon B1F and B2F: the Stairs menu and its information window; the Controls panel top right; a menu
+   open.
+8. Fast forward on and off.
+Then I pull `game.log` and logcat.
+
 ## 1. Setup (15 November)
 
 - Repo `d:\AI\APPS DEV\pokemon-fulldex`, branch `main`. Build in WSL1 Ubuntu 24.04 on `D:\WSL\Ubuntu-24.04`
