@@ -11,7 +11,8 @@
 //   facing column of the cell inwards, the bottom row of the cell above). A cell that continues the
 //   same piece of picture as its neighbours matches exactly, so whole stretches of art carry on
 //   together and only break where they must; the pixels are never blended or recoloured.
-// - Cells are only taken from rows near their own (kRowReach), so sky stays sky and ground ground.
+// - Cells are only taken from rows near their own (kRowReach), so sky stays sky and ground ground,
+//   and from the part of the picture next to that side (kColPart), so a painting's subject stays in it.
 // - Where no cell fits well (a busy edge), the picture mirrored about its edge, cell for cell, is
 //   used instead (kMirrorCost): the smart mirror the cascade falls back on.
 // - Ties are broken by a hash of the scene's map, so a scene always gets the same fill, frame to frame
@@ -40,6 +41,7 @@ namespace WideFill
 {
 
 constexpr int kRowReach = 6;     // cells taken from at most this many rows above or below
+constexpr int kColPart = 4;      // and from the picture's outer part on that side: this fraction of its width (at least 4 cells)
 constexpr int kMirrorCost = 54;  // the mirror's cost, per compared pixel (the sum of |dR|+|dG|+|dB|)
 constexpr int kRepeatCost = 24; // per compared pixel: the same cell as the one inwards or above
 constexpr int kAlphaCost = 64;  // per pixel where one side has art and the other only the backdrop
@@ -401,12 +403,16 @@ inline void Build(const Job& job, Result& r)
                     const uint8_t* wantBot = hasAbove ? &botRow[((size_t)((above >> 12) & 0xFFF) * Wc + (above & 0xFFF)) * 32] : nullptr;
                     const int pixels = hasAbove ? 16 : 8;
 
-                    // The mirror: the picture reflected about its edge (for k past the picture's width,
-                    // reflected again, so it never runs out).
+                    // (Only from the part of the picture next to this side: what is at its edge goes on, not
+                    // what is in its middle. A painting's subject, the night fountain's jets and steps, carried on
+                    // beside it read as broken copies and flat blocks.)
+                    const int reach = std::max(4, (ra1 - ra0) / kColPart);
+                    // The mirror: that part of the picture reflected about its edge (for k past it, reflected
+                    // again, so it never runs out).
                     uint32_t best = 0;
                     int bestCost = 1 << 30;
                     {
-                        const int span = ra1 - ra0;
+                        const int span = std::min(reach, ra1 - ra0);
                         int m = k % (2 * span);
                         if (m >= span) m = 2 * span - 1 - m;
                         const bool mirAgain = (k / span) & 1;
@@ -417,7 +423,7 @@ inline void Build(const Job& job, Result& r)
                     // Only from this picture, from rows near this one, with the cell inwards (and above,
                     // when matched against the one placed above) in the picture too.
                     const int y0 = std::max(hasAbove ? row0 + 1 : row0, y - kRowReach), y1 = std::min(row1 - 1, y + kRowReach);
-                    const int x0 = side ? ra0 + 1 : ra0, x1 = side ? ra1 : ra1 - 1;
+                    const int x0 = side ? std::max(ra0 + 1, ra1 - reach) : ra0, x1 = side ? ra1 : std::min(ra1 - 1, ra0 + reach);
                     for (int sy = y0; sy <= y1; sy++)
                         for (int sx = x0; sx < x1; sx++)
                         {
