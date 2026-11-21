@@ -150,8 +150,8 @@ ewgame.sh`.
 
 ### Phone checklist (one batch, when the phone is plugged in)
 
-APK: `D:\WSL\scratch\p1pk\eos-c445.apk` (head `c44521e`; arm64-v8a and x86_64; signature ok; 16 KB alignment
-ok; `assets/funcs/C2SE.txt` present; no `.nds` or `.sav`; SHA-256 `7e34c7de...ab1e`). Install with
+APK: `D:\WSL\scratch\p1pk\eos-e0e8.apk` (code at `e0e86f9`; arm64-v8a and x86_64; signature ok; 16 KB alignment
+ok; `assets/funcs/C2SE.txt` present; no `.nds` or `.sav`; SHA-256 `4b545b75...3adc`). Install with
 `adb install -r` (keeps the save). Then, scene by scene, say for each: sides convincing (yes/no); any seam,
 mirror, stretch, black block or banding (where, when); second screen size and hiding (right/wrong); anything else.
 
