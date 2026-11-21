@@ -42,7 +42,7 @@ Diagnostics added for this work (environment variables, off by default):
 |---|---|---|---|
 | Dungeon | bottom (engine A) | BG3, 512x256 map, 16 colours, scrolled with the camera; BG2 512x256 the tile grid (only while shown); sprites (OBJ) | the player's choice: controls, team, log, map; BG0/BG1 256-colour text layers |
 | Ground (towns, cutscenes) | bottom | BG3 + BG2, 512-wide maps; one tall scene over both screens | the upper half of the same scene; windows when a menu is up |
-| Personality test | top (questions) | backdrops | the bow (touch) |
+| Personality test | bottom: its opening lines and the questions with their answers (windows); top: the result | the same moving backdrop on both | the top screen's backdrop; the bow (touch) at the end |
 
 Evidence: `--shot-layers` (`layers_046040.png`: the floor yellow = BG3), `[bgmap] frame 46040 unit A dispcnt
 C0211F18 bgcnt 0001 1B80 5C12 5E1B`. BG0 is the 3D layer; in dungeons BLDCNT is `3E41`, EVA = EVB = 8: the
@@ -51,6 +51,36 @@ over the floor (not a window: both windows are off).
 
 UI (text windows, the HUD line, the message log) is on BG0/BG1 with 256x256 maps and extended palettes;
 world layers are 512 wide. wide2d.h uses that difference.
+
+## A new game's first screens (the black view, task 1.1)
+
+Reported on the phone: a fresh New Game "stays black" (the touch controls over a black view); a loaded save
+plays. Reproduced on the Android emulator (x86_64 build) and in the headless harness from power-on.
+
+- **Cause.** The personality test (`PersonalityTestFrameUpdate`, mode Quiz) opens with lines of text on the
+  **touch** screen while the top screen is black (`raw_001350`: "This is the portal that leads to the
+  world..."; `raw_001550`: "Before you depart for adventure, you must answer some questions."), then asks
+  its questions in windows on the touch screen over a backdrop shown on both (`raw_002100`). `PmdFuncs::
+  LargeScreen` put the top screen large for the whole test and the generic composer shows the other screen
+  only as a panel of text (`pmdPanel`, the top screen's UI layers), so the view was black, then a backdrop
+  with no question. The game was running and waiting for A (`[pmd] frame 1221: personality test`, frames
+  advancing, `[widefill] ... palette not up yet` for the black top screen).
+- **Not a regression.** The same black view at `68d995a` on the emulator (`eos-b68`); the phone's run of
+  `68d995a` (`phone-s7`) got through by pressing on blind (personality test from frame 5475 to 8557). No
+  first bad commit: the behaviour is as old as the mode rule (`06f79df`).
+- **Fix** (`d2df393`, `3f1e848`). In the test, the large screen is the one with the game's windows
+  (`PmdFuncs::WindowScreen`, from `WINDOW_LIST`: engine 0 for the questions, engine 1 for "Your aura is..."; the
+  top one wins while both are up); with no window, the screen shown stays unless it is blank and the other
+  is not (`ActivityFocus::LargeUnlessBlank`), which shows the opening lines.
+- **Hypotheses from the task, with the evidence.** H1 regression: rejected (black at `68d995a`). H2 frames not
+  published: rejected (the touch screen's lines are in `raw_*`, the composed frame is the top screen's black;
+  `[trace] ... drawn 1`). H3 worker stall: rejected (frames advance; the black stays with `SSR_WIDE_FILL=0`).
+  H4 scene not recognised: partly: recognised (Quiz), but the screen it implied was wrong. H5 fast forward:
+  rejected (the ">>" is the touch controls' button; `fast_lock=0`; the headless run with `fast_lock=1` the
+  same). H6 first-time files: rejected (`save ... 0 bytes` on the phone's runs that played on).
+- **Tests.** `tests/test_generic_game.cpp` (the rule, ROM-free); `tests/test_eos_new_game.py` (needs
+  `SSR_TEST_EOS_ROM` and `SSR_TEST_BINARY`): from power-on, the composed view at frames 1350-1550 shows the
+  lines, and at 1900 and 2100 a question's box; failed before each fix, passes after.
 
 ## The dungeon floor beyond the screen
 
