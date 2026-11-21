@@ -128,12 +128,19 @@ Checks (intro, 9000 frames from power-on): temporal checker 31 frames (24 sprite
 SAFETY 1 frame (3437); margin checker every 20th frame 30 (the island's water read as flat; the treasure
 scene's dark side; the main menu's fade; 3820/3440 one side).
 
+Also fixed since: `58782ca` message boxes on black screens no longer mirrored into the sides; `9b18f74` the
+3437 burst no longer drops to safety (its big pop gone); `e0e86f9` P3, the sunset sea's black strips and block
+(gaps in the art closed beside the screen). Intro now: safety 0 frames, temporal checker 29.
+
 Open, found on the way:
-- P3 the sunset sea pan (beach): a black strip at the right edge (emulator only so far; needs a state there).
+- C1 "Chapter 1: A Storm at Sea" card (new game, ~5950-6100): a navy block and a piece of another painting at
+  the right.
+- C2 the storm at sea (~7500-8000): dark patches in the clouds at the right; at 7800-8000 BG2's map fails its
+  check (safety) and the sides break into pieces of rock and wave.
 - L1 Chunsoft and copyright screens: a piece of the neighbouring screen (a "(c)", a blue "N") at the outer
   edge, and the Nintendo screen's notice box in the right margin. A split of the map's pictures by empty
   columns was tried and reverted (it cut the screens into slivers).
-- 3437 the fountain-to-island burst (pop and SAFETY).
+- 3436-3438 the fountain-to-island burst: pale blocks and island pieces at the right for 3 frames.
 - Not started: tier B scroll memory, the selector, profiles and the contact-sheet lab (needs the owner's
   picks), procedural extras, measure 2 cross-fade, the 3D layer wide (1.6 item 2), sprites beyond 6 tiles
   (1.6 item 3), towns beyond the beach (1.6 item 4), the timing table on the phone.
