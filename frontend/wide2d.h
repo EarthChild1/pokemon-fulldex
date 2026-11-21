@@ -299,6 +299,18 @@ inline std::vector<uint32_t> DrawMap(melonDS::NDS& nds, int unitNum, const Layer
     return img;
 }
 
+// BLDCNT effect 1 (alpha blending) as the hardware does it, on 8-bit channels: a * EVA + b * EVB, in
+// 16ths, at most white. (EVA and EVB above 16 count as 16.)
+inline uint32_t AlphaBlend(uint32_t a, uint32_t b, int eva, int evb)
+{
+    eva = std::min(eva, 16);
+    evb = std::min(evb, 16);
+    uint32_t r = 0;
+    for (int sh = 0; sh < 24; sh += 8)
+        r |= (uint32_t)std::min(255, (int)(((a >> sh) & 0xFF) * eva + ((b >> sh) & 0xFF) * evb) >> 4) << sh;
+    return r;
+}
+
 // The screen of engine `unitNum` with `extend` columns drawn on each side: the screen as the game
 // drew it in the middle (`screen`, 256x192), and beside it every background layer whose map is 512
 // pixels wide (one the game scrolls across a larger picture: a dungeon floor, and its grid; not the
@@ -381,7 +393,23 @@ inline bool Render(melonDS::NDS& nds, int unitNum, const uint32_t* screen, int e
                     usable++;
                     const int idx = SampleChunks(vv, l, sources[l.num], lineScroll[y][l.num][0] + x + dx, lineScroll[y][l.num][1] + y + dy);
                     if (idx <= 0) continue;
-                    const uint32_t a = colour(palette(idx * 2), l.num, y), b = screen[y * 256 + x];
+                    uint32_t a = colour(palette(idx * 2), l.num, y);
+                    const uint32_t b = screen[y * 256 + x];
+                    // (Blended on the screen with what is under it, BLDCNT effect 1: compared blended the
+                    // same way, with the layer under it as the hardware's map gives it there.)
+                    const u16 bc = lineBlend[y][0];
+                    if (((bc >> 6) & 3) == 1 && (shown & 0x20) && (bc & (1 << l.num)))
+                    {
+                        uint32_t u = colour(palette(0), 5, y);
+                        int under = 5;
+                        for (int j = i + 1; j < n && under == 5; j++)
+                        {
+                            const Layer& m = layers[j];
+                            const int jdx = Sample(vv, m, lineScroll[y][m.num][0] + x, lineScroll[y][m.num][1] + y);
+                            if (jdx > 0) { u = colour(palette(jdx * 2), m.num, y); under = m.num; }
+                        }
+                        if (bc & (0x100 << under)) a = AlphaBlend(a, u, unit.EVA, unit.EVB);
+                    }
                     int d = 0;
                     for (int sh = 0; sh < 24; sh += 8) d = std::max(d, std::abs((int)((a >> sh) & 0xFF) - (int)((b >> sh) & 0xFF)));
                     good += d <= 12;
@@ -654,6 +682,12 @@ inline bool Render(melonDS::NDS& nds, int unitNum, const uint32_t* screen, int e
             // has anything (past the edge of a map that does not repeat), the line's backdrop, as
             // the hardware would show it.
             // (prio 5: every layer there is past the edge of its map: the game has no picture there.)
+            // (Alpha blending, BLDCNT effect 1, as the line was drawn: a first-target layer on top is mixed
+            // with what is under it, when that is a second target, EVA and EVB as the frame ended. The
+            // personality test's backdrop is one layer at half over another: drawn opaque beside the
+            // screen, it was brighter than in it, and out of step.)
+            const u16 blendCnt = lineBlend[y][0];
+            const bool alpha = ((blendCnt >> 6) & 3) == 1 && (shown & 0x20);
             auto world = [&](int x, int& prio) -> uint32_t {
                 bool past = true;
                 for (int i = 0; i < n; i++)
@@ -663,7 +697,18 @@ inline bool Render(melonDS::NDS& nds, int unitNum, const uint32_t* screen, int e
                     if (idx > 0)
                     {
                         prio = layers[i].prio;
-                        return colour(palette(idx * 2), layers[i].num, y);
+                        const uint32_t a = colour(palette(idx * 2), layers[i].num, y);
+                        if (!alpha || !(blendCnt & (1 << layers[i].num))) return a;
+                        // (What is under it: the next layer that draws here, else the backdrop.)
+                        uint32_t b = backdrop;
+                        int under = 5;
+                        for (int j = i + 1; j < n && under == 5; j++)
+                        {
+                            if (!use[j]) continue;
+                            const int jdx = sampleAt(j, x);
+                            if (jdx > 0) { b = colour(palette(jdx * 2), layers[j].num, y); under = layers[j].num; }
+                        }
+                        return (blendCnt & (0x100 << under)) ? AlphaBlend(a, b, unit.EVA, unit.EVB) : a;
                     }
                     past &= idx < 0;
                 }
@@ -755,6 +800,53 @@ inline bool Render(melonDS::NDS& nds, int unitNum, const uint32_t* screen, int e
         }
     }
 
+    // A plain picture (one colour over nearly all of the 64 columns next to where it ends: lines of text on
+    // black, a logo on white) is carried on in that colour: mirrored, its letters showed beside the
+    // screen the wrong way round.
+    for (int side = 0; side < 2; side++)
+    {
+        static thread_local std::vector<int> bins;
+        bins.assign(4096, 0);
+        int total = 0;
+        for (int y = 0; y < 192; y++)
+        {
+            const int e = mapEnd[side][y];
+            if (e < 0) continue;
+            const uint32_t* row = &out[(size_t)y * outW];
+            const int inner = side ? extend + 256 + e - 1 : e;
+            for (int k = 0; k < 64; k++)
+            {
+                const int i = side ? inner - k : inner + k;
+                if (i < 0 || i >= outW) break;
+                const uint32_t c = row[i];
+                bins[((c >> 12) & 0xF00) | ((c >> 8) & 0xF0) | ((c >> 4) & 0xF)]++;
+                total++;
+            }
+        }
+        if (!total) continue;
+        const int top = (int)(std::max_element(bins.begin(), bins.end()) - bins.begin());
+        if (bins[top] * 100 < total * 90) continue;
+        // (The colour itself: the first pixel of the picture in that bin.)
+        uint32_t ground = 0;
+        for (int y = 0; y < 192 && !ground; y++)
+        {
+            const int e = mapEnd[side][y];
+            if (e < 0) continue;
+            const uint32_t c = out[(size_t)y * outW + (side ? extend + 256 + e - 1 : e)];
+            if ((((c >> 12) & 0xF00) | ((c >> 8) & 0xF0) | ((c >> 4) & 0xF)) == top) ground = c | 0x1000000;
+        }
+        ground &= 0xFFFFFF;
+        for (int y = 0; y < 192; y++)
+        {
+            const int e = mapEnd[side][y];
+            if (e < 0) continue;
+            uint32_t* row = &out[(size_t)y * outW];
+            const int from = side ? extend + 256 + e : 0, to = side ? outW : e;
+            for (int i = from; i < to; i++)
+                if (objPrio[(size_t)y * sideW + sideIndex(i - extend)] >= 4) row[i] = ground;
+            mapEnd[side][y] = -1; // (done: not mirrored below)
+        }
+    }
     // MapEnd: past the end of what can be drawn (no fill from widefill.h yet, a layer whose map in RAM
     // did not match the screen this frame, a dungeon floor's end), the picture mirrored about its last
     // column, fading with distance (to 60%, 96 pixels out) into the soft colour of its last 8 columns

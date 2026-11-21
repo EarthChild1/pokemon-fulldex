@@ -202,6 +202,12 @@ int main()
             }
     }
 
+    // Alpha blending beside the screen (BLDCNT effect 1), as the hardware mixes: half and half; all of
+    // the top layer; clamped at white; EVA and EVB above 16 count as 16.
+    assert(Wide2D::AlphaBlend(0xFF0000, 0x0000FF, 8, 8) == 0x7F007F);
+    assert(Wide2D::AlphaBlend(0x123456, 0xABCDEF, 16, 0) == 0x123456);
+    assert(Wide2D::AlphaBlend(0xF0F0F0, 0xF0F0F0, 16, 16) == 0xFFFFFF);
+    assert(Wide2D::AlphaBlend(0x808080, 0x000000, 31, 0) == 0x808080);
     printf("widefill: all checks passed\n");
     return 0;
 }

@@ -525,6 +525,7 @@ struct Manager
         std::shared_ptr<Result> res;
         int lastUsed = 0;
         int retryAt = 0;
+        int tries = 0;             // builds started (the palette's retry is logged on the first)
         std::vector<uint16_t> sig; // the tiles' pictures, sampled (see Update)
     };
     std::vector<Group> cache;
@@ -721,13 +722,13 @@ struct Manager
         auto res = std::make_shared<Result>();
         g.res = res;
         g.retryAt = 0;
-        const int startFrame = frame;
-        std::thread([job, res, startFrame]() {
+        const int startFrame = frame, tries = ++g.tries;
+        std::thread([job, res, startFrame, tries]() {
             Build(*job, *res);
             if (res->ok)
                 fprintf(stderr, "[widefill] map %dx%d (from frame %d): %d pictures, %d cells a side, %d of %d mirrored%s, %.1f ms\n",
                     res->w, res->h, startFrame, res->pictures, res->fill.cols, res->mirrored, res->cells, res->sparse ? " (objects: left clear)" : "", res->ms);
-            else if (res->retry)
+            else if (res->retry && tries == 1)
                 fprintf(stderr, "[widefill] map %dx%d (from frame %d): palette not up yet, later\n", res->w, res->h, startFrame);
             res->done.store(true, std::memory_order_release);
         }).detach();
