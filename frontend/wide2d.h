@@ -809,12 +809,25 @@ inline bool Render(melonDS::NDS& nds, int unitNum, const uint32_t* screen, int e
         static thread_local std::vector<int> bins;
         bins.assign(4096, 0);
         int total = 0;
+        // (Rows through one of the game's text windows, its dark neutral grey body, are not counted: on a
+        // black screen with a message box the box was mirrored beside the screen, the ground is black.)
+        auto body = [](uint32_t c) {
+            const int r = (c >> 16) & 0xFF, g = (c >> 8) & 0xFF, b = c & 0xFF;
+            return r >= 0x18 && r <= 0x30 && std::abs(r - g) <= 4 && std::abs(g - b) <= 4;
+        };
         for (int y = 0; y < 192; y++)
         {
             const int e = mapEnd[side][y];
             if (e < 0) continue;
             const uint32_t* row = &out[(size_t)y * outW];
             const int inner = side ? extend + 256 + e - 1 : e;
+            int inBody = 0;
+            for (int k = 0; k < 64; k++)
+            {
+                const int i = side ? inner - k : inner + k;
+                if (i >= 0 && i < outW) inBody += body(row[i]);
+            }
+            if (inBody >= 16) continue;
             for (int k = 0; k < 64; k++)
             {
                 const int i = side ? inner - k : inner + k;
