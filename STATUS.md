@@ -109,6 +109,38 @@ Found on the way (for tasks 1.3 and 1.4):
 - P2. Personality-test backdrop: the sides have a hard seam at the view's 4:3 edge and a different phase and
   brightness from the middle; in the Bow step, flat horizontal stripes.
 
+### Tasks 1.3 to 1.6: progress (22 November)
+
+Done and pushed (headless and emulator checks; **not yet seen on the phone**):
+- `a18ad14` Audit of the side fill against the owner's design (docs/EOS-NOTES.md, "The side fill against the
+  owner's design"): tier A partly, B not built, C and D partly, selector, profiles, lab and extras not built;
+  measures 1 to 5 partly.
+- `f5ecbcb` Measure 5: alpha blending (BLDCNT effect 1) beside the screen, and the RAM-map check compares
+  blended. Personality-test backdrop: no seam, check 486/486 (was safety 244/486). P2 fixed. Plain screens
+  (text on black) carried on plain, not mirrored: P1 fixed for the opening lines. Palette retry logged once.
+- `94eba13` Fill taken from the picture's edge quarter only: the night fountain's teal blocks and jet
+  fragments gone (P4 mostly; small remnants at the far right).
+- `f9ec739` Task 1.5: panel steps aside on a second signal (a window's body in the picture), unit tests for
+  its place at 20:9, 16:9, 16:10 and the overlap; checked headless at 16:9 with the dungeon menu.
+- `a55e72e` Task 1.6 item 5: pmdsky-debug in NOTICE and the Credits page; README row for the game.
+
+Checks (intro, 9000 frames from power-on): temporal checker 31 frames (24 sprite fly-ins, the 3437 burst);
+SAFETY 1 frame (3437); margin checker every 20th frame 30 (the island's water read as flat; the treasure
+scene's dark side; the main menu's fade; 3820/3440 one side).
+
+Open, found on the way:
+- P3 the sunset sea pan (beach): a black strip at the right edge (emulator only so far; needs a state there).
+- L1 Chunsoft and copyright screens: a piece of the neighbouring screen (a "(c)", a blue "N") at the outer
+  edge, and the Nintendo screen's notice box in the right margin. A split of the map's pictures by empty
+  columns was tried and reverted (it cut the screens into slivers).
+- 3437 the fountain-to-island burst (pop and SAFETY).
+- Not started: tier B scroll memory, the selector, profiles and the contact-sheet lab (needs the owner's
+  picks), procedural extras, measure 2 cross-fade, the 3D layer wide (1.6 item 2), sprites beyond 6 tiles
+  (1.6 item 3), towns beyond the beach (1.6 item 4), the timing table on the phone.
+- A headless script now plays a new game from power-on into the first dungeon (`[pmd] frame 21791: dungeon`):
+  `D:\WSL\scratch\p1
+ewgame.sh`.
+
 ### Phone checklist (one batch, when the phone is plugged in)
 
 APK: `D:\WSL\scratch\p1pk\eos-c445.apk` (head `c44521e`; arm64-v8a and x86_64; signature ok; 16 KB alignment
