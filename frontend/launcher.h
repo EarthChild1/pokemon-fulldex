@@ -6747,7 +6747,7 @@ inline void DrawPage(Canvas& c, const GlassSpots& sp, bool solid, float u)
             { "melonDS", "The DS emulation" },
             { "mGBA", "The GBA games, through Pok\xC3\xA9mon GBA Widescreen" },
             { "Pok\xC3\xA9" "Daisy by Lidor Itzhari", "Companion readers and text decoders" },
-            { "pokebw2, aletheia, pret/pokeplatinum", "Function names from their decompilations" },
+            { "pokebw2, aletheia, pokeplatinum, pmdsky-debug", "Function names from their decompilations and symbols" },
             { "DeadSkullzJr's cheat database", "The built-in DS cheats, via libretro-database" },
             { "sphaira", "How the HOME Menu icons are made" },
             { "WeeabooGod", "Cheats menu ideas (PR #16)" },

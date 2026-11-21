@@ -20,6 +20,11 @@ POKEDAISY
 Based on PokeDaisy by Lidor Itzhari - https://github.com/lidor30/pokedaisy
 Companion readers and text decoders adapted under GNU GPL v3 from commit 52f959770de4085bacfda16e6d77be7e91134bc4.
 
+PMDSKY-DEBUG
+
+The function table of Pokemon Mystery Dungeon: Explorers of Sky (tools/pmd/C2SE.txt: addresses and names only) is made from pmdsky-debug by UsernameFodder - https://github.com/UsernameFodder/pmdsky-debug
+Its symbol tables are used under the MIT licence (copyright 2022 UsernameFodder), from commit 80f28e0cac1c1b446f7c0d10454e072b87807c2c.
+
 OTHER THIRD-PARTY COMPONENTS
 
 FullDex incorporates or builds on other open-source components, including melonDS and mGBA.

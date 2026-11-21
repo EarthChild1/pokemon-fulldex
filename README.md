@@ -50,6 +50,7 @@ DS game, presented the way it should look on a modern screen.
 | **SoulSilver / HeartGold** | English, French, Spanish (and Italian HeartGold) | German, Italian, Japanese and Korean in beta |
 | **Platinum** | English, French, Spanish | German, Italian, Japanese and Korean in beta |
 | **Diamond / Pearl** | Diamond: English, Spanish, German, Italian. Pearl: English, French, Spanish, German, Korean | Experimental |
+| **Mystery Dungeon: Explorers of Sky** | English (US) | Experimental: Android ([notes](docs/EOS-NOTES.md)); Windows and Linux to come |
 | **Emerald** (GBA) | English | |
 | **Ruby / Sapphire** (GBA) | English (1.0, 1.1, 1.2), German, French, Spanish, Italian, Japanese | |
 | **FireRed / LeafGreen** (GBA) | English (1.0, 1.1) | |
