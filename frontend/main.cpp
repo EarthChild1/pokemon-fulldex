@@ -10754,9 +10754,9 @@ int main(int argc, char** argv)
                     float px0, py0, px1, py1;
                     GenericComposer::PanelRect(view.width, genericComposer.panelSize, px0, py0, px1, py1);
                     const int mainEngine = 1 - tu; // (the bottom screen's engine: 0 is A)
-                    for (int i = 0; i < nw; i++)
-                        if (wins[i].screen == mainEngine && wins[i].x0 - 8 < px1 && wins[i].x1 + 8 > px0 && wins[i].y0 - 8 < py1 && wins[i].y1 + 8 > py0)
-                            covered = true;
+                    // (Two signals, either enough: the game's window list, and a window's body in the picture.)
+                    covered = PmdFuncs::Covers(wins, nw, mainEngine, px0, py0, px1, py1) ||
+                              PmdFuncs::WindowPixels(pmdBig ? bot : top, px0, py0, px1, py1);
                     if (getenv("SSR_PMD_WINDOWS"))
                     {
                         static std::string last;

@@ -275,8 +275,13 @@ out in 7 frames when a window on the large screen, 8 px larger, reaches it, and 
 has for 10. At 20:9 the panel lies wholly in the margin (x 261-338 of the 426-px view), so the dungeon's
 windows never reach it; at 16:9 it overlaps x 219-256 and steps aside for the menu (checked).
 
-No pixel-based fallback: the window list is read from the one supported version only, confirmed at run
-time; a pixel detector would mistake the HUD line for a window.
+Two signals, either enough (task 1.5): the window list (`PmdFuncs::Covers`) and the picture
+(`PmdFuncs::WindowPixels`: under the panel, widened by 8 pixels, at least 6 rows with 12 or more pixels in a
+row of a window's dark neutral body, about 0x20 a channel). The HUD line has no body and the floors are not
+neutral grey, so neither counts (`tests/test_pmd_panel.cpp`, synthetic). Checked headless from a dungeon
+state at 16:9 (1280 x 720): the panel is in while idle, steps aside with the menu open (46027) and is back
+after it closes (46204 + 11 frames); at 20:9 it is never covered. The panel's place for 20:9, 16:9 and
+16:10 at 30, 60 and 100 percent is in the same test.
 
 ## The side fill against the owner's design (audit, task 1.3)
 

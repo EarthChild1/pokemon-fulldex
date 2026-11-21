@@ -4,7 +4,9 @@
 // It plays the part SoulSilver's recompiled probes play for its layouts: here, which screen the game
 // is played on. Where none of them runs (the title, its menus, a fade) the screens' activity decides
 // (ActivityFocus).
+#include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -101,6 +103,42 @@ struct PmdFuncs
             o.y1 = o.y0 + w[7] * 8;
         }
         return n;
+    }
+
+    // Whether one of the windows on engine `engine` (8 pixels larger all round) reaches the rectangle
+    // x0..x1, y0..y1 in the screen's pixels (where the panel goes: GenericComposer::PanelRect).
+    static bool Covers(const Window* w, int n, int engine, float x0, float y0, float x1, float y1)
+    {
+        for (int i = 0; i < n; i++)
+            if (w[i].screen == engine && w[i].x0 - 8 < x1 && w[i].x1 + 8 > x0 && w[i].y0 - 8 < y1 && w[i].y1 + 8 > y0) return true;
+        return false;
+    }
+
+    // The same from the picture, on its own: a window's body is a dark neutral grey (about 0x20 on each
+    // channel; the frame round it is bright), unlike the floor, the sky or the HUD line, which has no
+    // body. True when, within x0..x1, y0..y1 of `screen` (256x192, 0xRRGGBB) widened by 8 pixels, at
+    // least 6 rows have 12 or more such pixels in a row.
+    static bool WindowPixels(const uint32_t* screen, float x0, float y0, float x1, float y1)
+    {
+        if (!screen) return false;
+        const int ax = std::max(0, (int)x0 - 8), bx = std::min(256, (int)x1 + 8);
+        const int ay = std::max(0, (int)y0 - 8), by = std::min(192, (int)y1 + 8);
+        auto body = [](uint32_t c) {
+            const int r = (c >> 16) & 0xFF, g = (c >> 8) & 0xFF, b = c & 0xFF;
+            return r >= 0x18 && r <= 0x30 && std::abs(r - g) <= 4 && std::abs(g - b) <= 4;
+        };
+        int rows = 0;
+        for (int y = ay; y < by; y++)
+        {
+            int run = 0, best = 0;
+            for (int x = ax; x < bx; x++)
+            {
+                run = body(screen[y * 256 + x]) ? run + 1 : 0;
+                best = std::max(best, run);
+            }
+            rows += best >= 12;
+        }
+        return rows >= 6;
     }
 
     // The screen the game's windows are on, as LargeScreen gives it (0 top, 1 bottom; -1 none). The
