@@ -283,6 +283,55 @@ state at 16:9 (1280 x 720): the panel is in while idle, steps aside with the men
 after it closes (46204 + 11 frames); at 20:9 it is never covered. The panel's place for 20:9, 16:9 and
 16:10 at 30, 60 and 100 percent is in the same test.
 
+## The naming screen's flicker (the partner's nickname)
+
+What the owner saw on the phone: on "What is your partner's nickname?" the picture jumped between two
+layouts about twice a second until START: the controls' help large in the middle with the keyboard as a
+small panel in the corner, and the help moved left with the keyboard large beside it.
+
+Found headless (new game from power-on, input stopped at frame 5360, idle on the keyboard; `SSR_PMD_PANEL=1`):
+
+- The large screen never changed (top, the personality test's rule), and the panel's cover never changed
+  (0 at 20:9). The mode never left "personality test". So none of the four first guesses: not the window list
+  (H1), not the two cover signals (H2), not the large screen's decision (H3), not the mode (H4).
+- What changed was the world beside the screen. `PmdGround::Find` found 2 layers, then 1, then 0 for 20 of
+  every 48 frames. Without the world, the composer has no room for the keyboard in a bar, so it slid the
+  top screen left and put the keyboard beside it (the slide, 14 frames: the burst in the videos); when the
+  world came back the slide snapped to 0. 14 changes in 320 idle frames, 2.5 a second.
+- Why: with a per-layer log, at frame 5383 the renderer's window chunk (+0x44) went from 4 to 5, and the
+  hardware map then matched 360 of 972 entries until frame 5405, when it matched all 972 again at chunk 5.
+  The game moves the window's chunk about 22 frames before it copies the new window into the hardware map;
+  its backdrop moves a chunk every 48 frames. Until the copy, the hardware map holds the window a chunk back.
+
+The fixes:
+- `046e388` `PmdGround::Find` tries the window the game names, then the one a chunk to each side (same 98%
+  check), and draws from the one the hardware map holds. Idle on the naming screen: 0 changes in 320 frames.
+  Over a new game to the first dungeon the world goes away 49 times instead of 59 (the ten fewer all in the
+  personality test; the rest are scene changes, in pairs). The intro's 9000 composed frames are the same byte
+  for byte.
+- `cb32e46` The keyboard is a mode of its own (`GetKeyboardStatus`, arm9 `0x02036CD4`, runs every frame it is
+  up), played on the touch screen: it is where the player is. Before, the help was large and the keyboard a
+  panel too small to read at 20:9, and at 16:9 not shown at all (the help's window lies under the panel's
+  place, so the panel stepped aside for the whole screen). Now the keyboard is large from the first frame to
+  the last, the help a panel at 20:9 and out of the way at 16:9 (it would cover the name). The mode is seen
+  only on the two keyboards of a new game (the partner's nickname and the player's name on the beach).
+
+Decisions:
+- The world beside the screen has no hold of its own (unlike the panel's 10 frames): its cause is fixed, and
+  a hold would keep a world on screen that the game no longer draws when a scene really changes.
+- The two cover signals (the window list and a window's body in the picture) stay one decision: they are
+  joined (either) into one value before the panel's hold, so they never drive the panel with two answers.
+  On the naming screen they agree throughout (20:9 never covered, 16:9 covered while the help is large; with
+  the keyboard large, not covered at 20:9). The window list is the game's own word; the picture was added in
+  task 1.5 so that the panel does not rest on one signal (no window the list misses has been seen yet). A
+  cover flipping every frame keeps the panel out until it has been clear for 10 frames
+  (`tests/test_pmd_panel.cpp`).
+
+Tests: `tests/test_pmd_ground.cpp` (synthetic maps), `tests/test_pmd_panel.cpp` (the oscillating cover, the
+keyboard's mode, the table), and `tests/test_eos_naming.py` (your ROM, headless, at 1600 x 720 and 1280 x 720:
+idle on the nickname screen 420 frames, the large screen, the world and the slide never change, the panel
+never fades out and back).
+
 ## The side fill against the owner's design (audit, task 1.3)
 
 Read from the code at `c44521e` (not from the notes). Built: done as designed. Partly: what is there and what
