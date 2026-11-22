@@ -2606,6 +2606,9 @@ int PickGame(Folders& fo, std::vector<Launcher::Game>& games, int selected, bool
             case SDL_MOUSEBUTTONDOWN:
             case SDL_MOUSEBUTTONUP:
             {
+                // (Not before the first drawing: the canvas has no size yet, and the layout would
+                // divide by it. A mouse, or a touch passed on as one, can come that early.)
+                if (canvas.w <= 0 || canvas.h <= 0) break;
                 // (Window points to the canvas's pixels, which are more on a high-DPI screen.)
                 int ww = 1, wh = 1;
                 SDL_GetWindowSize(window, &ww, &wh);
