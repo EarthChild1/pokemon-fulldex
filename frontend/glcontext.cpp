@@ -63,8 +63,13 @@ void SsrEnterGLContext()
 
 void SsrLeaveGLContext()
 {
-    glFlush();
-    eglMakeCurrent(OurDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    // (Also called when the context could not be made: then only what was current before
+    // comes back. See SsrReleaseGLContext.)
+    if (OurContext != EGL_NO_CONTEXT)
+    {
+        glFlush();
+        eglMakeCurrent(OurDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    }
     if (SdlWindow && SdlContext)
     {
         // SDL thinks its context never stopped being current and would skip making it current
@@ -82,6 +87,9 @@ void SsrLeaveGLContext()
 
 void SsrReleaseGLContext()
 {
+    // (Nothing to let go of when the context was never made: a phone without OpenGL ES 3.1.
+    // OpenGL's functions may not be loaded then, and glFlush would call nothing and crash.)
+    if (OurContext == EGL_NO_CONTEXT) return;
     glFlush();
     eglMakeCurrent(OurDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
 }
