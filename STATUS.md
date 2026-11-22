@@ -206,6 +206,37 @@ as far as the videos go; the owner still says whether they count).
 - Not verified yet: the phone. Not done yet: the minor-glitch sweep of the videos (section 6 of the prompt) and the
   known open items (section 5: 3437, the Chunsoft slide, copyright letters, light-ray bands, waterfall flicker).
 
+**Section 6, the videos frame by frame** (every frame extracted with ffmpeg into `D:\WSL\scratch\naming\frA`,
+`frB`; both checkers at 1280 x 576: A temporal 8, margins 1; B temporal 53, margins 233). Video times are the
+recording's own; "frame" is the video frame (about 30 a second).
+
+| Video, s (frame) | Scene | Side | What | Verdict |
+|---|---|---|---|---|
+| A 3.5, 5.2, 6.4 (111, 164, 204) | the fall, storm | all | one-frame white flash | correct: lightning, the centre flashes too |
+| A 6.7 (213-215) | "Waaaaah!" over a grey fade | L, R | the message box mirrored into the left margin ("deeeaaW"), a box edge at the right | **defect G1**, open |
+| B 3.9-6.8 (113-203) | the logo flying in | R | small changes at the right | correct: the logo's flight, inside the screen |
+| B 6.9 (189-191) | Grovyle and the Sableye | all | one dark frame | correct: the game's flash |
+| B 7.8 (210) | the white burst to the island | L, R | pale blocks in both margins | **defect**, known item "3437", open |
+| B 34.8 (971), 48.9 (1388) | end of a question | L, R | the sides go black a frame before the centre fades | **defect G3**, cause found, open |
+| B 35.4 (992) | the aura's bow | R | the top screen's panel appears at once | to check: whether it faded in (the video has 1 frame in 2) |
+| B 39.7 (1120) | the bow fading | R | the bow's sparkle | correct: inside the screen |
+| B 46.8 (1329), 49.1 (1394), 58.3 (1667) | partner choice, naming, "Is the name OK?" | L | a vertical band in the left margin for a frame | **defect G3** (the same short drops), open |
+| B 46-60 (1388-1640) | the nickname screen | L, R | the layout jumping (seams, pops every 24 frames) | **fixed** (`046e388`, `cb32e46`), phone to confirm |
+| B 33-35 (flat L) | the questions | L | margin read as flat | not a fill defect: the D-pad overlay covers it (touch buttons out of scope) |
+
+G3, cause (headless, with a temporary per-layer log, not committed): when the backdrop changes (a new question's
+colour), the renderer names the new map for 1 or 2 frames before the hardware has it (window chunk 4,1; 567 or
+864 entries, 88 or 37 matching); no window near it matches, so the world is off for those frames (frames 1265-1266,
+1721, 5781, 5876-5877 of the headless new game). Next: a fix at that cause.
+
+Test suite (WSL, `python3 -m unittest discover -s tests`): 124 tests, 14 skipped (ROM or tools absent), 1 error:
+`test_ui_customisation.test_touch_editor` (the D-pad size after an edit). It fails the same at `68d995a` (before
+this session's work): pre-existing, touch-button code, out of scope. The new tests pass.
+
+APK for the phone: `D:\WSL\scratch\p1\apk\eos-nick1.apk` (code at `057c38a`; 16 KB alignment ok; no `.nds` or
+`.sav`; `assets/funcs/C2SE.txt` has `GetKeyboardStatus`; SHA-256 `1cbb5427...895e`). Not installed yet: the phone
+was not connected.
+
 **Owner, please (section 7 of the prompt):**
 1. Install the new APK (below) and play the naming again: does the picture hold one layout the whole time
    (keyboard large; on your phone the controls' help small at the top right)?
