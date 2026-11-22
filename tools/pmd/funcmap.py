@@ -2,7 +2,8 @@
 """Function table for Pokemon Mystery Dungeon: Explorers of Sky (North America, C2SE).
 
 Writes the few functions frontend/pmd.h watches to tell the game's modes apart (the dungeon,
-its menus, ground mode, the personality test), in frontend/funcwatch.h's format:
+its menus, ground mode, the personality test, the naming keyboard), in frontend/funcwatch.h's
+format:
 
     <address> a <module> <first bytes> <name>
 
@@ -31,6 +32,7 @@ WATCHED = [
     ("overlay11", "RunNextOpcode"),               # ground mode: its scripts (towns, the guild, cutscenes)
     ("overlay11", "FuncThatCallsRunNextOpcode"),
     ("overlay13", "PersonalityTestFrameUpdate"),  # the personality test, every frame
+    ("arm9", "GetKeyboardStatus"),                # the naming keyboard (on the touch screen), every frame it is up
 ]
 
 

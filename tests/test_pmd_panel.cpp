@@ -1,15 +1,32 @@
 // ROM-free: Explorers of Sky's second-screen panel over the wide world (generic_scene.h, pmd.h). Where it
 // goes at several shapes of screen, and the two signals that make it step aside: the game's window
-// list (synthetic windows) and a window's body in the picture (synthetic pictures).
+// list (synthetic windows) and a window's body in the picture (synthetic pictures). And the naming
+// keyboard: a mode of its own, played on the touch screen, whose function is in the table.
 #include <cassert>
 #include <cstdio>
+#include <fstream>
+#include <sstream>
 #include <vector>
 #include "../frontend/merged.h"
 #include "../frontend/generic_scene.h"
 #include "../frontend/pmd.h"
 
-int main()
+int main(int argc, char** argv)
 {
+    // ---- the naming keyboard: its own mode, the touch screen large for as long as it is up ----
+    assert(PmdFuncs::LargeScreen(PmdFuncs::Keyboard) == 1);
+    assert(std::string(PmdFuncs::Name(PmdFuncs::Keyboard)) == "keyboard");
+    assert(PmdFuncs::LargeScreen(PmdFuncs::Quiz) == 0); // (the personality test's questions: unchanged)
+    if (argc > 1)
+    {
+        // Every function the modes are told apart by is in the table (tools/pmd/C2SE.txt).
+        std::ifstream f(argv[1]);
+        std::stringstream all;
+        all << f.rdbuf();
+        for (const std::string& n : PmdFuncs::Names()) assert(all.str().find(" " + n + "\n") != std::string::npos);
+        assert(all.str().find("02036cd4 a main - GetKeyboardStatus\n") != std::string::npos);
+    }
+
     // ---- where the panel goes: the view's top right corner, inside the view, for each shape ----
     struct Shape { int w, h; bool besideScreen; } shapes[] = {
         { 1600, 720, true },   // 20:9, the owner's phone: wholly in the margin
@@ -84,6 +101,47 @@ int main()
     paint(0x2A2A3A);                            // a dark blue-grey cave floor: not neutral
     assert(!PmdFuncs::WindowPixels(fb.data(), x0, y0, x1, y1));
     assert(!PmdFuncs::WindowPixels(nullptr, x0, y0, x1, y1));
+
+    // ---- a cover that comes and goes every frame does not make the panel blink ----
+    // (The panel fades out under a window and comes back only once none has been over it for kPanelHold
+    // frames: a signal flipping every frame keeps it out, and its alpha never climbs in between.)
+    {
+        std::vector<uint32_t> topFb(256 * 192, 0x8C6A3C), botFb(256 * 192, 0x101010);
+        for (int y = 40; y < 150; y++)
+            for (int x = 30; x < 226; x++) botFb[y * 256 + x] = 0xE0E0E0; // the keyboard: something to show
+        ScreenImage screens[2] = { { topFb.data(), nullptr }, { botFb.data(), nullptr } };
+        const float vw = MergedMakeView(1600, 720).width;
+        GenericComposer gc;
+        auto step = [&](bool covered) {
+            gc.panelCovered = covered;
+            gc.Build(0, vw, screens, true, true);
+            return gc.PanelAlpha();
+        };
+        int a = 0;
+        for (int i = 0; i < 40; i++) a = step(false);
+        assert(a == 255);
+        int prev = a, rises = 0;
+        for (int i = 0; i < 120; i++)
+        {
+            a = step(i % 2 == 1); // (ends covered)
+            rises += a > prev;
+            prev = a;
+        }
+        assert(rises == 0 && a == 0); // out, and stays out
+        // Clear again: still out for kPanelHold frames, then in, without a step back.
+        for (int i = 0; i < GenericComposer::kPanelHold - 1; i++) assert(step(false) == 0);
+        prev = 0;
+        int falls = 0;
+        for (int i = 0; i < 30; i++)
+        {
+            a = step(false);
+            falls += a < prev;
+            prev = a;
+        }
+        assert(falls == 0 && a == 255);
+        // The world beside the screen stays across these frames: the main screen never slides.
+        assert(gc.Slide() == 0);
+    }
 
     puts("pmd panel passed");
 }

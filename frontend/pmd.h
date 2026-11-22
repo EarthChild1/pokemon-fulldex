@@ -14,9 +14,9 @@
 
 struct PmdFuncs
 {
-    enum Mode { Unknown, Dungeon, DungeonMenu, Ground, Quiz };
+    enum Mode { Unknown, Dungeon, DungeonMenu, Ground, Quiz, Keyboard };
 
-    int advance = -1, display = -1, camera = -1, menu = -1, stairs = -1, script = -1, script2 = -1, quiz = -1;
+    int advance = -1, display = -1, camera = -1, menu = -1, stairs = -1, script = -1, script2 = -1, quiz = -1, keyboard = -1;
     bool on = false;
     // A mode counts as running for this many frames after one of its functions last ran: the script
     // engine and the personality test skip frames, and a mode flickering off would move the picture.
@@ -25,7 +25,7 @@ struct PmdFuncs
     static std::vector<std::string> Names()
     {
         return { "AdvanceFrame", "DisplayMonstersAndItems", "UpdateCamera", "DungeonMenuLoop", "StairsMenuLoop",
-                 "RunNextOpcode", "FuncThatCallsRunNextOpcode", "PersonalityTestFrameUpdate" };
+                 "RunNextOpcode", "FuncThatCallsRunNextOpcode", "PersonalityTestFrameUpdate", "GetKeyboardStatus" };
     }
 
     void Find(const FuncWatch& fw)
@@ -38,11 +38,14 @@ struct PmdFuncs
         script = fw.Find("RunNextOpcode");
         script2 = fw.Find("FuncThatCallsRunNextOpcode");
         quiz = fw.Find("PersonalityTestFrameUpdate");
+        keyboard = fw.Find("GetKeyboardStatus");
         on = advance >= 0 || script >= 0 || quiz >= 0;
     }
 
     Mode Current(const FuncWatch& fw) const
     {
+        // (The keyboard first: it is opened from the personality test, the towns and the guild alike.)
+        if (fw.Ran(keyboard, kWindow)) return Keyboard;
         if (fw.Ran(quiz, kWindow)) return Quiz;
         if (fw.Ran(menu, kWindow) || fw.Ran(stairs, kWindow)) return DungeonMenu;
         if (fw.Ran(advance, kWindow) || fw.Ran(display, kWindow) || fw.Ran(camera, kWindow)) return Dungeon;
@@ -54,7 +57,10 @@ struct PmdFuncs
     // The dungeon and its menus are on the bottom screen (the top one shows what the player chose for
     // it: the controls, the team's stats, the message log or the map); so is ground mode (towns, the
     // guild, cutscenes). The personality test's backdrop is on both: there the screen with its windows
-    // decides (WindowScreen), the top one until it has any.
+    // decides (WindowScreen), the top one until it has any. The naming keyboard is on the touch screen,
+    // with the controls' help on the top one: the keyboard is where the player is, so it is large for as
+    // long as it is up. (Before, the personality test's rule made the help large, the keyboard a small
+    // panel at 20:9 and hidden under the help at 16:9.)
     static int LargeScreen(Mode m)
     {
         switch (m)
@@ -62,7 +68,8 @@ struct PmdFuncs
         case Quiz: return 0;
         case Dungeon:
         case DungeonMenu:
-        case Ground: return 1;
+        case Ground:
+        case Keyboard: return 1;
         default: return -1;
         }
     }
@@ -160,7 +167,7 @@ struct PmdFuncs
 
     static const char* Name(Mode m)
     {
-        static const char* names[] = { "unknown", "dungeon", "dungeon menu", "ground", "personality test" };
+        static const char* names[] = { "unknown", "dungeon", "dungeon menu", "ground", "personality test", "keyboard" };
         return names[m];
     }
 };

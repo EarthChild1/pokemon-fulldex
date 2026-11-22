@@ -10,3 +10,4 @@
 022ddd64 a ov11 ? RunNextOpcode
 022dd164 a ov11 ? FuncThatCallsRunNextOpcode
 0238a1c8 a ov13 ? PersonalityTestFrameUpdate
+02036cd4 a main - GetKeyboardStatus

@@ -1,4 +1,4 @@
-"""Explorers of Sky's second-screen panel: where it goes, and when it steps aside (ROM-free)."""
+"""Explorers of Sky's second-screen panel: where it goes, and when it steps aside; the naming keyboard's mode (ROM-free)."""
 from pathlib import Path
 import shutil, subprocess, tempfile, unittest
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,7 +19,7 @@ class PmdPanelTests(unittest.TestCase):
             exe = Path(folder) / 'pmd-panel'
             subprocess.run(['c++', '-std=c++17', *sdl_flags(), '-I' + str(ROOT / 'frontend'), '-I' + str(ROOT / 'melonDS/src'),
                             str(ROOT / 'tests/test_pmd_panel.cpp'), '-o', str(exe)], check=True)
-            subprocess.run([str(exe)], check=True, timeout=30)
+            subprocess.run([str(exe), str(ROOT / 'tools/pmd/C2SE.txt')], check=True, timeout=30)
 
 
 if __name__ == '__main__':
