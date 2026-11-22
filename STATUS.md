@@ -170,7 +170,8 @@ are emulator results; the owner's phone is the only real device):
 - **Found, not fixed (upstream launcher):** a tablet held upright (4:3 or 16:10 portrait): the game tile is
   drawn over the music bar and under the Continue banner. Sideways it is right.
 - APK with both fixes: `D:\WSL\scratch\p1\apk\eos-compat1.apk` (code at `8ed720b` with STATUS only after it;
-  SHA-256 `614f330d...07a1`). Not installed on the phone yet, so the owner's checklist run is not interrupted.
+  SHA-256 `614f330d...07a1`). **Installed on the phone on 22 November** in place of `eos-e0e8.apk` (the game
+  code is the same; the save file unchanged, same size and date). The checklist below is run on it.
 
 ### Phone checklist (one batch, when the phone is plugged in)
 
