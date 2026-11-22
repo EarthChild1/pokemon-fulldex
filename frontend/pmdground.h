@@ -40,6 +40,46 @@ inline uint32_t Word(const melonDS::NDS& nds, uint32_t a)
 
 inline bool InRam(uint32_t a) { return a >= 0x02000000 && a < 0x02400000; }
 
+// Where to look for the window the game drew: the chunk it names first, then a chunk to each side
+// (see Find).
+constexpr int kNearWindows[5][2] = { { 0, 0 }, { -1, 0 }, { 1, 0 }, { 0, -1 }, { 0, 1 } };
+
+// Whether background `l`'s hardware map holds, in the window the game draws (from column kWindowCol),
+// exactly what layer `s` gives with the window starting at chunk wx, wy: 98% of the entries the same,
+// and at least 32 of them not empty.
+inline bool WindowMatches(const Wide2D::ChunkSource& s, const Wide2D::BgVram& v, const Wide2D::Layer& l, int wx, int wy)
+{
+    int same = 0, filled = 0, total = 0;
+    for (int row = 0; row < kWindowRows; row++)
+        for (int col = kWindowCol; col < kWindowCol + kWindowCols; col++)
+        {
+            uint16_t e;
+            const int tx = wx * 3 + col - kWindowCol, ty = wy * 3 + row;
+            if (!s.Entry(tx, ty, e)) continue;
+            total++;
+            if (e == Wide2D::MapEntry(v, l, col, row))
+            {
+                same++;
+                filled += (e & 0x3FF) != 0;
+            }
+        }
+    return total >= kWindowCols * kWindowRows / 2 && same * 50 >= total * 49 && filled >= 32;
+}
+
+// The window, of kNearWindows round chunk cx, cy, that background `l` holds for layer `s`: its chunk
+// in wx, wy. False if none.
+inline bool NearWindow(const Wide2D::ChunkSource& s, const Wide2D::BgVram& v, const Wide2D::Layer& l, int cx, int cy, int& wx, int& wy)
+{
+    for (const int (&d)[2] : kNearWindows)
+        if (WindowMatches(s, v, l, cx + d[0], cy + d[1]))
+        {
+            wx = cx + d[0];
+            wy = cy + d[1];
+            return true;
+        }
+    return false;
+}
+
 // The layers of engine `unitNum`'s screen that the game's maps account for: out[b] for background b
 // (ChunkSource::on). Returns how many were found.
 inline int Find(melonDS::NDS& nds, int unitNum, Wide2D::ChunkSource out[4])
@@ -72,37 +112,27 @@ inline int Find(melonDS::NDS& nds, int unitNum, Wide2D::ChunkSource out[4])
                 s.wrap = (Word(nds, r + 4) >> 16) & 0xFF;
                 s.widthTiles = wChunks * 3;
                 s.heightTiles = hChunks * 3;
-                s.originX = cx * 24 - kWindowCol * 8;
-                s.originY = cy * 24;
                 // Which background shows it: every entry of the window the same, and not all empty.
+                // (The window the game names first, then the one a chunk to each side: the game moves
+                // the window's chunk before it copies the new window into the hardware map, on the
+                // personality test's naming screen 22 frames before, its backdrop a chunk further every
+                // 48 frames. Until then the hardware map holds the window a chunk back, and the world
+                // beside the screen comes from that one; without it the world went away for those
+                // frames and the layout jumped twice a second.)
                 for (int i = 0; i < n; i++)
                 {
                     const Wide2D::Layer& l = layers[i];
-                    if (l.mapW != 512 || out[l.num].on) continue;
-                    int same = 0, filled = 0, total = 0;
-                    for (int row = 0; row < kWindowRows; row++)
-                        for (int col = kWindowCol; col < kWindowCol + kWindowCols; col++)
-                        {
-                            uint16_t e;
-                            const int tx = cx * 3 + col - kWindowCol, ty = cy * 3 + row;
-                            if (!s.Entry(tx, ty, e)) continue;
-                            total++;
-                            if (e == Wide2D::MapEntry(v, l, col, row))
-                            {
-                                same++;
-                                filled += (e & 0x3FF) != 0;
-                            }
-                        }
-                    if (total >= kWindowCols * kWindowRows / 2 && same * 50 >= total * 49 && filled >= 32)
-                    {
-                        s.on = true;
-                        s.renderer = (int)(&ptr - kStatePtrs) * 2 + (int)(&at - kRenderAt);
-                        s.windowCol = kWindowCol;
-                        s.windowCols = kWindowCols;
-                        out[l.num] = s;
-                        found++;
-                        break;
-                    }
+                    int wx, wy;
+                    if (l.mapW != 512 || out[l.num].on || !NearWindow(s, v, l, cx, cy, wx, wy)) continue;
+                    s.on = true;
+                    s.originX = wx * 24 - kWindowCol * 8;
+                    s.originY = wy * 24;
+                    s.renderer = (int)(&ptr - kStatePtrs) * 2 + (int)(&at - kRenderAt);
+                    s.windowCol = kWindowCol;
+                    s.windowCols = kWindowCols;
+                    out[l.num] = s;
+                    found++;
+                    break;
                 }
             }
         }
