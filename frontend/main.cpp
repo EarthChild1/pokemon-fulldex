@@ -3996,7 +3996,15 @@ int main(int argc, char** argv)
     Wide2D::ChunkSource pmdSources[4];
     WideFill::Manager pmdFill;
     auto pickSceneGeneric = [&](float viewWidth, const ScreenImage* screens) {
-        return genericComposer.Build(focus.Swapped() ? 1 : 0, viewWidth, screens, pmdWorld && viewWidth >= 300, pmdPanel);
+        Scene sc = genericComposer.Build(focus.Swapped() ? 1 : 0, viewWidth, screens, pmdWorld && viewWidth >= 300, pmdPanel);
+        // SSR_PMD_PANEL=1: each frame's layout to the log (the large screen, the world across the
+        // view and the layers it came from, the panel, its cover, the slide and the panel's alpha).
+        static const bool panelTrace = getenv("SSR_PMD_PANEL") != nullptr;
+        if (panelTrace)
+            fprintf(stderr, "[panel] frame %u big %d world %d layers %d panel %d covered %d slide %.2f alpha %d\n", frame,
+                    focus.Swapped() ? 1 : 0, pmdWorld ? 1 : 0, pmdGroundLayers, pmdPanel ? 1 : 0, genericComposer.panelCovered ? 1 : 0,
+                    genericComposer.Slide(), genericComposer.PanelAlpha());
+        return sc;
     };
 
     auto pickScene = [&](bool cursorInUse, float viewWidth, const ScreenImage* screens) {
