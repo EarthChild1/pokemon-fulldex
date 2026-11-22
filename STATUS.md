@@ -145,14 +145,39 @@ Open, found on the way:
   picks), procedural extras, measure 2 cross-fade, the 3D layer wide (1.6 item 2), sprites beyond 6 tiles
   (1.6 item 3), towns beyond the beach (1.6 item 4), the timing table on the phone.
 - A headless script now plays a new game from power-on into the first dungeon (`[pmd] frame 21791: dungeon`):
-  `D:\WSL\scratch\p1
-ewgame.sh`.
+  `D:\WSL\scratch\p1\newgame.sh`.
+
+### Android devices beyond the owner's phone (22 November)
+
+The owner asked that the build play on most Android devices, not only theirs. What was checked (emulator results
+are emulator results; the owner's phone is the only real device):
+- **Android versions.** The app's minimum is Android 7.0 (API 24, about 97% of devices in use), unchanged.
+  New emulators `eos_api24` (Android 7.0) and `eos_api29` (Android 10, the first with scoped storage), plus
+  `eos_api37`: on each, install, the storage permission and the folder picker, the game list, and the game's
+  intro all work. The owner's phone (Android 15) runs the same APK.
+- **Graphics chips without OpenGL ES 3.1** (older and budget phones): WORLD ON GPU crashed the app at the first
+  start (SIGSEGV after `EGL_BAD_CONFIG`). Fixed in `69c9c9b`: the processor draws the world instead, and
+  game.log says why. Checked on the three emulators (their graphics have ES 3.0 only).
+- **Mouse, Chromebook, Samsung DeX:** a mouse event before the launcher's first drawing divided by zero.
+  Fixed in `8ed720b`. The emulator builds no longer need their uncommitted guard.
+- **Screen shapes** (emulator, game in landscape): 4:3 and 16:10 tablets, 16:9, 20:9 fill the screen; 21:9
+  shows black bars at the sides (the developer's aspect limit, left as it is).
+- **16 KB memory pages** (Android 15 and later devices that use them): both libraries in both ABIs aligned
+  (`tools/android/check_native_alignment.py`).
+- **Processor types:** arm64-v8a (all phones and tablets from about 2017 on) and x86_64 (Chromebooks, PC
+  emulators). 32-bit-only ARM phones (armeabi-v7a) are not built: melonDS's JIT is for 64-bit only, and this
+  game runs on the JIT, so such a phone would be far too slow. Owner's call whether that matters.
+- **Found, not fixed (upstream launcher):** a tablet held upright (4:3 or 16:10 portrait): the game tile is
+  drawn over the music bar and under the Continue banner. Sideways it is right.
+- APK with both fixes: `D:\WSL\scratch\p1\apk\eos-compat1.apk` (code at `8ed720b` with STATUS only after it;
+  SHA-256 `614f330d...07a1`). Not installed on the phone yet, so the owner's checklist run is not interrupted.
 
 ### Phone checklist (one batch, when the phone is plugged in)
 
 APK: `D:\WSL\scratch\p1\apk\eos-e0e8.apk` (code at `e0e86f9`; arm64-v8a and x86_64; signature ok; 16 KB alignment
 ok; `assets/funcs/C2SE.txt` present; no `.nds` or `.sav`; SHA-256 `4b545b75...3adc`). Install with
-`adb install -r` (keeps the save). Then, scene by scene, say for each: sides convincing (yes/no); any seam,
+`adb install -r` (keeps the save). **Installed on the phone on 22 November** (save files kept; a copy of the
+app's files taken first, in `D:\WSL\scratch\p1\phone_backup_*`). Then, scene by scene, say for each: sides convincing (yes/no); any seam,
 mirror, stretch, black block or banding (where, when); second screen size and hiding (right/wrong); anything else.
 
 1. A loaded save still plays (task 1.1 gate).
