@@ -173,6 +173,45 @@ are emulator results; the owner's phone is the only real device):
   SHA-256 `614f330d...07a1`). **Installed on the phone on 22 November** in place of `eos-e0e8.apk` (the game
   code is the same; the save file unchanged, same size and date). The checklist below is run on it.
 
+### The naming screen's flicker (fix_nickname_flicker prompt, 22 November)
+
+The owner's report and material (on `eos-compat1`): two videos (12:15:39, 62 s, the beach story to "What is your
+name?"; 12:17:41, 61 s, the intro, the personality test, the partner, the naming) and five screenshots of the
+partner's nickname screen. Copies in `D:\WSL\scratch\naming\` (never committed). They also show a fresh New Game
+from the opening lines through the questions and the naming to the beach, on the phone (checklist items 2 and 6,
+as far as the videos go; the owner still says whether they count).
+
+**Gate 3, cause (headless, WSL; full write-up in docs/EOS-NOTES.md, "The naming screen's flicker"):**
+- Reproduced: new game to the nickname keyboard (frame 5363), then no input. The layout alternated 14 times in
+  320 frames (2.5 a second; the videos show about two bursts a second), the same two states as the screenshots.
+- None of H1 to H4. Window list, cover, large screen and mode never changed (`SSR_PMD_PANEL=1`, `SSR_PMD_WINDOWS=1`).
+  The world beside the screen came and went (`PmdGround::Find`: 2, 1, 0 layers), and the composer slid the top
+  screen left without it. Cause: the game moves its map window's chunk (+0x44, 4 to 5 at frame 5383) about 22
+  frames before it copies the new window into the hardware map (360 of 972 entries matched until 5405, then 972).
+- Second finding: on the nickname screen the controls' help was the large screen. The keyboard was a panel too
+  small to read at 20:9, and at 16:9 it was never shown (the help's window lies under the panel's place).
+
+**Gate 4, fixes (headless, WSL; pushed):**
+- `046e388` the window a chunk to each side is tried too (same strict check). Idle: 0 changes in 320 frames.
+  New game to the first dungeon: the world goes away 49 times instead of 59. Intro: 9000 frames byte for byte the same.
+- `8f6c0e6` `SSR_PMD_PANEL=1`, each frame's layout to the log (off unless asked for).
+- `cb32e46` the keyboard a mode of its own (`GetKeyboardStatus`, pmdsky-debug arm9, NA `0x02036CD4`, now in the
+  table), the touch screen large. Seen only on the two keyboards of a new game (5363-5452, 18659-18764).
+  Nickname screen: the keyboard large throughout; the help a panel at 20:9, out of the way at 16:9.
+- `414902e` notes. Tests: `tests/test_pmd_ground.cpp` (synthetic), `tests/test_pmd_panel.cpp` (a cover flipping
+  every frame keeps the panel out, no climb; the keyboard's mode; the table), `tests/test_eos_naming.py` (ROM,
+  headless, 20:9 and 16:9: 0 changes of the large screen, the world or the slide in 420 idle frames, no fade out
+  and back). The stale-window fix alone does not change that test's result once the keyboard is large (its map
+  has no lag); its own evidence is the idle run with the top screen large and the new-game count above.
+- Not verified yet: the phone. Not done yet: the minor-glitch sweep of the videos (section 6 of the prompt) and the
+  known open items (section 5: 3437, the Chunsoft slide, copyright letters, light-ray bands, waterfall flicker).
+
+**Owner, please (section 7 of the prompt):**
+1. Install the new APK (below) and play the naming again: does the picture hold one layout the whole time
+   (keyboard large; on your phone the controls' help small at the top right)?
+2. For each minor glitch you saw "here and there": the video name and the second (or say what and where).
+3. Later, confirm each fixed glitch on the phone.
+
 ### Phone checklist (one batch, when the phone is plugged in)
 
 APK: `D:\WSL\scratch\p1\apk\eos-e0e8.apk` (code at `e0e86f9`; arm64-v8a and x86_64; signature ok; 16 KB alignment
