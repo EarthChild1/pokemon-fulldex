@@ -327,6 +327,16 @@ Decisions:
   cover flipping every frame keeps the panel out until it has been clear for 10 frames
   (`tests/test_pmd_panel.cpp`).
 
+Found on the way, in the owner's videos frame by frame (both margin checkers on every frame at 1280 x 576):
+- The sides black, or a band, for a frame as a scene changes its backdrop. The renderer names the new map a
+  frame or two before the hardware has it, while the screen still shows the old one. `34ab2eb`: last frame's
+  source is kept while the hardware still holds exactly what it gives. Headless all such drops fall on black
+  frames (41 instead of 49 over a new game); on the phone the presses land on other frames.
+- "Waaaaah!" over the fade to white after the personality test: the box mirrored into the left margin. The
+  plain-picture rule leaves out rows through a window's dark grey body, but the fade made the body lighter
+  than that grey. The grey is now taken as the line's master brightness left it (`tests/test_eos_fade_box.py`:
+  101 apart beside the box before, the fade's one colour after).
+
 Tests: `tests/test_pmd_ground.cpp` (synthetic maps), `tests/test_pmd_panel.cpp` (the oscillating cover, the
 keyboard's mode, the table), and `tests/test_eos_naming.py` (your ROM, headless, at 1600 x 720 and 1280 x 720:
 idle on the nickname screen 420 frames, the large screen, the world and the slide never change, the panel
