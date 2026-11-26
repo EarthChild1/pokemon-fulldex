@@ -241,6 +241,18 @@ APK for the phone: `D:\WSL\scratch\p1\apk\eos-nick2.apk` (code at `f1c1a0e`: the
 the fade; 16 KB alignment ok; no `.nds` or `.sav`; `assets/funcs/C2SE.txt` has `GetKeyboardStatus`; SHA-256
 `c77bc205...1ad4`). The five EoS tests pass on it (headless, WSL). Not installed yet: the phone was not connected.
 
+**On the phone (26 November, by Claude over adb, not the owner's confirmation):** `eos-nick2.apk` installed with
+`-r` (a copy of the app's files first, `D:\WSL\scratch\p1\phone_backup_20261126_1625`). The app said the save is
+blank: it is, and was already on 22 and 17 November (all 131072 bytes 00/FF, the same checksum in the save, its
+prelaunch copy and the 17 November backup), so the in-game save was never written; the progress is in the state
+slots (slot 0 18 November 01:31, slots 1 and 2), which exit does not write and which are unchanged. With Play
+Anyway, a New Game: the opening lines shown, the questions, the Bow held, the aura, the partner, the nickname
+screen with the keyboard large and the help small at the top right. 20 s recorded idle on it (`ph_naming.mp4`,
+60 fps, 1188 frames): no layout change. Left: once every 48 frames (0.8 s) the left margin loses its waves for one
+frame (temporal checker: popL 30-80, against 150-450 in the owner's video). **G4, open**: headless the side check
+matches about half (113 of 209 samples, offset search) on the two frames after each chunk step of the backdrop
+(5384, 5386, 5432, 5434, ...); one of its two blended wave layers is dropped there. Not yet fixed.
+
 **Owner, please (section 7 of the prompt):**
 1. Install the new APK (below) and play the naming again: does the picture hold one layout the whole time
    (keyboard large; on your phone the controls' help small at the top right)?
