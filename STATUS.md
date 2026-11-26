@@ -263,6 +263,26 @@ replaces the shown one only after 8 frames in a row (not yet on the phone: `eos-
 margin for one frame every 0.8 s) still seen in this recording. The pass stopped at the name question when a call
 came in on the phone.
 
+**On the phone, third pass (26 November, Claude over adb; `eos-nick4.apk`, code `05ac196`; slots and the blank save
+checked unchanged before and after the install):** New Game from power-on to Beach Cave B2F, the whole way by the
+on-screen buttons. Recorded in five parts (60 fps, 1600 x 720; both checkers, temporal on every frame, margins on
+every 30th; `D:\WSL\scratch\naming\rec_s1..s6.mp4`, never committed):
+- Partner's nickname: keyboard mode 6298 to 6642 and the question after it, the touch screen large throughout, no
+  flip (game.log).
+- The fall, the storm, the guild's entrance (the partner, Zubat and Koffing), the beach, the Krabby bubbles, the
+  sunset sea: temporal 30 flags in s1, all but 2 in the storm (popR 31-54: **C2 still open**, the right margin's waves
+  in blocks, a flat dark block); s2 6 flags; s3 (the beach dialogue) 0. The margin checker's `mirrorL` flags are all
+  on black frames (the D-pad over black reads as mirrored: not a fill defect).
+- The player's name on the beach: keyboard large, help at the top right, the beach across the view; the only changes
+  are the keyboard closing and opening for the name question.
+- Beach Cave B1F: the floor across the view, the Controls help at the top right; the moves menu and the main menu
+  (with "Beach Cave" and the team box) open and the help stays (20:9, never covered); the Stairs menu and its Info
+  window, then B2F (its title card): 0 temporal flags.
+- Fast forward on and off: 2.4 to 3.75 DS frames a frame while on, back to normal off.
+- game.log: no crash; 28 `[wide2d] safety` lines over the whole session (G4 and C2 kind); present interval 17.2 ms
+  mean, p99 34-38 ms.
+- G4 (the left margin's one-frame band on the nickname screen, every 0.8 s) still open.
+
 **Owner, please (section 7 of the prompt):**
 1. Install the new APK (below) and play the naming again: does the picture hold one layout the whole time
    (keyboard large; on your phone the controls' help small at the top right)?
