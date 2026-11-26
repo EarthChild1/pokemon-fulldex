@@ -253,6 +253,16 @@ frame (temporal checker: popL 30-80, against 150-450 in the owner's video). **G4
 matches about half (113 of 209 samples, offset search) on the two frames after each chunk step of the backdrop
 (5384, 5386, 5432, 5434, ...); one of its two blended wave layers is dropped there. Not yet fixed.
 
+**On the phone, second pass (26 November, Claude over adb):** the first pass's game.log showed every typed letter
+dropping the keyboard's mode for about 20 frames (the top screen large in between). `d5896fb` holds the mode 90
+frames; `eos-nick3.apk` installed (slots and save checked unchanged before and after), New Game again to the
+nickname, 30 s recorded while typing (A and B in turn every 1.5 s): the keyboard's mode held through all of it.
+One question ("Is the name OK?") came and went by a press, and as it closed the top screen was large for 5 frames
+(7592-7597); headless the same as the keyboard opens (5359-5363). `05ac196`: a large screen the mode asks for
+replaces the shown one only after 8 frames in a row (not yet on the phone: `eos-nick4.apk`). G4 (a band in the left
+margin for one frame every 0.8 s) still seen in this recording. The pass stopped at the name question when a call
+came in on the phone.
+
 **Owner, please (section 7 of the prompt):**
 1. Install the new APK (below) and play the naming again: does the picture hold one layout the whole time
    (keyboard large; on your phone the controls' help small at the top right)?
