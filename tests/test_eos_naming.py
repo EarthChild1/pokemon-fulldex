@@ -22,7 +22,7 @@ BINARY = os.environ.get('SSR_TEST_BINARY', '')
 KEYBOARD_FROM, WAIT_UNTIL = 5380, 5800
 
 
-def script():
+def script(typed=()):
     lines = [f'{a} {a + 3} A' for a in range(300, 2850, 16)]
     lines.append('2850 3900 touch 128 96')
     lines += [f'{a} {a + 3} A' for a in range(2860, 3900, 32)]
@@ -30,7 +30,16 @@ def script():
         for off, key in ((0, 'UP'), (16, 'A'), (32, 'START'), (48, 'A')):
             if a + off <= 5360:
                 lines.append(f'{a + off} {a + off + 3} {key}')
+    lines += [f'{a} {a + 3} A' for a in typed]  # (A on the keyboard: a letter typed into the name)
     return '\n'.join(lines) + '\n'
+
+
+def run(folder, compose, typed=()):
+    (Path(folder) / 'input.txt').write_text(script(typed))
+    env = dict(os.environ, SDL_VIDEODRIVER='dummy', SDL_AUDIODRIVER='dummy', SSR_PMD_PANEL='1')
+    return subprocess.run([BINARY, ROM, '--headless', '--no-save', '--jit', '--funcs', str(ROOT / 'tools/pmd/C2SE.txt'),
+                           '--frames', str(WAIT_UNTIL), '--input', str(Path(folder) / 'input.txt'),
+                           '--compose', compose], capture_output=True, text=True, env=env, timeout=900)
 
 
 def panel_lines(log):
@@ -47,11 +56,7 @@ class EosNamingTests(unittest.TestCase):
     def test_naming_screen_holds_one_layout(self):
         for compose in ('1600x720', '1280x720'):  # the owner's phone (20:9) and 16:9
             with self.subTest(compose=compose), tempfile.TemporaryDirectory() as folder:
-                (Path(folder) / 'input.txt').write_text(script())
-                env = dict(os.environ, SDL_VIDEODRIVER='dummy', SDL_AUDIODRIVER='dummy', SSR_PMD_PANEL='1')
-                r = subprocess.run([BINARY, ROM, '--headless', '--no-save', '--jit', '--funcs', str(ROOT / 'tools/pmd/C2SE.txt'),
-                                    '--frames', str(WAIT_UNTIL), '--input', str(Path(folder) / 'input.txt'),
-                                    '--compose', compose], capture_output=True, text=True, env=env, timeout=900)
+                r = run(folder, compose)
                 self.assertEqual(r.returncode, 0, r.stderr[-2000:])
                 self.assertRegex(r.stderr, r'\[pmd\] frame 53\d\d: keyboard')
                 frames = panel_lines(r.stderr)
@@ -65,6 +70,18 @@ class EosNamingTests(unittest.TestCase):
                 # The panel never fades in and out again (no ping-pong): its alpha only ever rises, or stays.
                 alphas = [w[3] for w in wait]
                 self.assertTrue(all(b >= a for a, b in zip(alphas, alphas[1:])), 'the panel faded out and back')
+
+    @unittest.skipUnless(ROM and BINARY and Path(ROM).is_file() and Path(BINARY).is_file(),
+                         'SSR_TEST_EOS_ROM and SSR_TEST_BINARY required')
+    def test_typing_keeps_the_keyboard_large(self):
+        # Letters typed (the game stops asking for the keyboard's status for 50 or more frames each time):
+        # the keyboard stays the large screen, as on the owner's phone it did not.
+        with tempfile.TemporaryDirectory() as folder:
+            r = run(folder, '1600x720', typed=(5400, 5500, 5600))
+            self.assertEqual(r.returncode, 0, r.stderr[-2000:])
+            frames = panel_lines(r.stderr)
+            big = {frames[f][0] for f in range(KEYBOARD_FROM, WAIT_UNTIL) if f in frames}
+            self.assertEqual(big, {1}, 'the large screen changed while typing')
 
 
 if __name__ == '__main__':

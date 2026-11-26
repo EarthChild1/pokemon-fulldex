@@ -21,6 +21,10 @@ struct PmdFuncs
     // A mode counts as running for this many frames after one of its functions last ran: the script
     // engine and the personality test skip frames, and a mode flickering off would move the picture.
     static constexpr unsigned kWindow = 30;
+    // The keyboard's longer: while a typed letter goes into the name its status is not asked for, 50 to 55
+    // frames each time (seen on the phone), and with 30 the touch screen stopped being the large one for
+    // about 20 frames at every letter.
+    static constexpr unsigned kKeyboardWindow = 90;
 
     static std::vector<std::string> Names()
     {
@@ -45,7 +49,7 @@ struct PmdFuncs
     Mode Current(const FuncWatch& fw) const
     {
         // (The keyboard first: it is opened from the personality test, the towns and the guild alike.)
-        if (fw.Ran(keyboard, kWindow)) return Keyboard;
+        if (fw.Ran(keyboard, kKeyboardWindow)) return Keyboard;
         if (fw.Ran(quiz, kWindow)) return Quiz;
         if (fw.Ran(menu, kWindow) || fw.Ran(stairs, kWindow)) return DungeonMenu;
         if (fw.Ran(advance, kWindow) || fw.Ran(display, kWindow) || fw.Ran(camera, kWindow)) return Dungeon;
