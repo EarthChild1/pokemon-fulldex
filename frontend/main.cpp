@@ -10690,7 +10690,23 @@ int main(int argc, char** argv)
                     if (forced < 0) forced = ActivityFocus::LargeUnlessBlank(focus.wantBottom ? 1 : 0, top, bot, focus.wantBottom);
                 }
                 const bool active = activityFocus.Update(top, bot);
-                const bool want = forced >= 0 ? forced == 1 : activityFocus.wantBottom;
+                bool want = forced >= 0 ? forced == 1 : activityFocus.wantBottom;
+                // (A new large screen from the mode only once it has been asked for kLargeHold frames in a
+                // row: as the naming keyboard opens or comes back from its question, the help's window on
+                // the top screen is up a few frames before the keyboard's, and the top screen was large for
+                // 4 or 5 frames between two of the keyboard's.)
+                {
+                    constexpr int kLargeHold = 8;
+                    static int asked = -1, askedFrames = 0;
+                    if (forced >= 0 && want != focus.wantBottom)
+                    {
+                        askedFrames = (int)want == asked ? askedFrames + 1 : 1;
+                        asked = want;
+                        if (askedFrames < kLargeHold) want = focus.wantBottom;
+                    }
+                    else
+                        asked = -1;
+                }
                 const bool changed = forced >= 0 ? want != focus.wantBottom : active;
                 activityFocus.wantBottom = want; // (from here on, if the mode is no longer known)
                 if (changed)
