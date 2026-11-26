@@ -283,6 +283,17 @@ every 30th; `D:\WSL\scratch\naming\rec_s1..s6.mp4`, never committed):
   mean, p99 34-38 ms.
 - G4 (the left margin's one-frame band on the nickname screen, every 0.8 s) still open.
 
+**The intro's missing background texture (owner, 26 November; found headless, WSL):** the New Game menu's Grovyle
+picture had horizontal streaks beside it (each row's edge colour), from frame 7653 of the intro to the end. The
+scene before ends under black and its map leaves the hardware; the menu puts its picture straight into the hardware
+map, one screen of it, with no map in RAM. `aad24ea`: such a one-screen picture (a 512-wide text layer, half the
+screen drawn, nothing else in the hardware map, not one tile over 40% of the screen) is made a map of its own and
+carried on from its own cells by widefill. Intro: the menu changes (7660-9000), one frame of a vine (2038), the rest
+the same byte for byte; the Nintendo logo stays plain (the rule's 40% tile limit). Left of the picture: its foliage;
+right: pieces of its tail repeated (widefill's cells from the picture's edge), a collage rather than a seamless
+picture. `tests/test_eos_menu_texture.py` (ROM). APK `D:\WSL\scratch\p1\apk\eos-nick5.apk` built; not installed (the
+phone was not connected). If the owner meant another scene by "background texture", the video name and second.
+
 **Owner, please (section 7 of the prompt):**
 1. Install the new APK (below) and play the naming again: does the picture hold one layout the whole time
    (keyboard large; on your phone the controls' help small at the top right)?
