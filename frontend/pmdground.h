@@ -81,8 +81,8 @@ inline bool NearWindow(const Wide2D::ChunkSource& s, const Wide2D::BgVram& v, co
 }
 
 // The layers of engine `unitNum`'s screen that the game's maps account for: out[b] for background b
-// (ChunkSource::on). Returns how many were found.
-inline int Find(melonDS::NDS& nds, int unitNum, Wide2D::ChunkSource out[4])
+// (ChunkSource::on). Returns how many were found. `prev`: a copy of last frame's, or null.
+inline int Find(melonDS::NDS& nds, int unitNum, Wide2D::ChunkSource out[4], const Wide2D::ChunkSource* prev = nullptr)
 {
     for (int b = 0; b < 4; b++) out[b] = Wide2D::ChunkSource();
     out[0].windowCol = kWindowCol;
@@ -137,6 +137,26 @@ inline int Find(melonDS::NDS& nds, int unitNum, Wide2D::ChunkSource out[4])
             }
         }
     }
+    // A background none of them accounts for, that had a source last frame (`prev`, a copy): that one,
+    // if the hardware map still holds what it gives. When a scene changes its backdrop the renderer
+    // names the new map a frame or two before the hardware has it, and meanwhile the screen still
+    // shows the old one; without this the world went away for those frames (the sides black, or a band,
+    // for a frame). A map in RAM that has been written over no longer matches, and is let go.
+    if (prev)
+        for (int i = 0; i < n; i++)
+        {
+            const Wide2D::Layer& l = layers[i];
+            const Wide2D::ChunkSource& p = prev[l.num];
+            if (l.mapW != 512 || out[l.num].on || !p.on || p.ram != nds.MainRAM) continue;
+            const int wx = (p.originX + kWindowCol * 8) / 24, wy = p.originY / 24;
+            if (!WindowMatches(p, v, l, wx, wy)) continue;
+            Wide2D::ChunkSource keep = p;
+            keep.viewTx = INT32_MIN; // (set again as it is drawn, as for a source found this frame)
+            keep.distrusted = false;
+            keep.fill = nullptr;
+            out[l.num] = keep;
+            found++;
+        }
     return found;
 }
 

@@ -10744,8 +10744,16 @@ int main(int argc, char** argv)
                 const bool dungeon = m == PmdFuncs::Dungeon || m == PmdFuncs::DungeonMenu;
                 pmdBig = focus.Swapped() ? 1 : 0;
                 const int bigUnit = pmdBig ? 1 - tu : tu;
+                // (Last frame's sources, while they are from the same screen: kept where the hardware still
+                // shows them, as a scene's backdrop changes.)
+                static int lastBigUnit = -1;
+                Wide2D::ChunkSource prevSources[4];
+                const bool havePrev = pmdGroundLayers > 0 && bigUnit == lastBigUnit;
+                if (havePrev) std::copy(pmdSources, pmdSources + 4, prevSources);
+                lastBigUnit = bigUnit;
                 pmdGroundLayers = 0;
-                if (!dungeon && merged && cfg.wide && !opt.noWide) pmdGroundLayers = PmdGround::Find(*nds, bigUnit, pmdSources);
+                if (!dungeon && merged && cfg.wide && !opt.noWide)
+                    pmdGroundLayers = PmdGround::Find(*nds, bigUnit, pmdSources, havePrev ? prevSources : nullptr);
                 pmdWorld = merged && cfg.wide && !opt.noWide && ((dungeon && pmdWideLive && pmdBig == 1) || pmdGroundLayers > 0);
                 // The top screen as a panel only while it shows text or windows (the dungeon's
                 // controls, team or log; a menu), not the sky of a two-screen scene.
