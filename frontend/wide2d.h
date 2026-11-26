@@ -839,10 +839,18 @@ inline bool Render(melonDS::NDS& nds, int unitNum, const uint32_t* screen, int e
         bins.assign(4096, 0);
         int total = 0;
         // (Rows through one of the game's text windows, its dark neutral grey body, are not counted: on a
-        // black screen with a message box the box was mirrored beside the screen, the ground is black.)
-        auto body = [](uint32_t c) {
+        // black screen with a message box the box was mirrored beside the screen, the ground is black.
+        // The grey as the line's master brightness left it: while a scene fades to white the body is
+        // lighter, and the box was mirrored again.)
+        auto body = [&](uint32_t c, int y) {
+            const int mbMode = (lineBlend[y][2] >> 14) & 3, mb = std::min(16, lineBlend[y][2] & 0x1F);
+            auto lit = [&](int v) { // (6-bit, as the hardware does it; then 8-bit)
+                if (mbMode == 1) v += ((63 - v) * mb) >> 4;
+                else if (mbMode == 2) v -= (v * mb + 15) >> 4;
+                return (v << 2) | (v >> 4);
+            };
             const int r = (c >> 16) & 0xFF, g = (c >> 8) & 0xFF, b = c & 0xFF;
-            return r >= 0x18 && r <= 0x30 && std::abs(r - g) <= 4 && std::abs(g - b) <= 4;
+            return r >= lit(0x18 >> 2) && r <= lit(0x30 >> 2) && std::abs(r - g) <= 4 && std::abs(g - b) <= 4;
         };
         for (int y = 0; y < 192; y++)
         {
@@ -854,7 +862,7 @@ inline bool Render(melonDS::NDS& nds, int unitNum, const uint32_t* screen, int e
             for (int k = 0; k < 64; k++)
             {
                 const int i = side ? inner - k : inner + k;
-                if (i >= 0 && i < outW) inBody += body(row[i]);
+                if (i >= 0 && i < outW) inBody += body(row[i], y);
             }
             if (inBody >= 16) continue;
             for (int k = 0; k < 64; k++)
