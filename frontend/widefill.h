@@ -602,7 +602,7 @@ struct Manager
                 if (!first) { first = &s; firstBg = b; }
                 else
                 {
-                    if (s.widthTiles != first->widthTiles || s.heightTiles != first->heightTiles) continue;
+                    if (s.widthTiles != first->widthTiles || s.heightTiles != first->heightTiles || s.ram != first->ram) continue;
                     const int dx = std::abs(s.originX - first->originX), dy = std::abs(s.originY - first->originY);
                     if ((dx || dy) && !(wasTogether[firstBg][b] && dx <= 24 && dy <= 24)) continue;
                     together[firstBg][b] = together[b][firstBg] = true;
@@ -699,8 +699,11 @@ struct Manager
         int extend, uint64_t key, Group& g)
     {
         auto job = std::make_shared<Job>();
-        job->ram.assign(nds.MainRAM, nds.MainRAM + nds.MainRAMMask + 1);
-        job->ramMask = nds.MainRAMMask;
+        // (The memory the group's maps are in: main RAM, or a picture's own copy, pmdground.h's
+        // HardwarePicture.)
+        const Wide2D::ChunkSource& s0 = src[all[members[0]].num];
+        job->ram.assign(s0.ram, s0.ram + s0.mask + 1);
+        job->ramMask = s0.mask;
         job->vram.assign(unitNum == 0 ? 0x80000 : 0x20000, 0);
         Wide2D::BgVram live{ &nds, unitNum };
         for (int m = 0; m < n; m++)

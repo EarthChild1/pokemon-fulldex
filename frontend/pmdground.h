@@ -19,8 +19,10 @@
 // frame, so a scene being loaded, another overlay at those addresses, or a different game version
 // is simply not used). Nothing is written.
 #pragma once
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <vector>
 #include "NDS.h"
 #include "wide2d.h"
 
@@ -78,6 +80,81 @@ inline bool NearWindow(const Wide2D::ChunkSource& s, const Wide2D::BgVram& v, co
             return true;
         }
     return false;
+}
+
+// A picture the game puts straight into the hardware map, one screen of it and nothing else there (the New
+// Game menu's Grovyle, after the scene that came before has ended): no map in RAM gives more of it, so
+// beside the screen there was only each row's edge colour drawn out, a smear. Here the hardware map becomes
+// the layer's map (a copy in chunks, as the game's own maps are kept, at the same pixels: origin 0, 0), so
+// that widefill.h carries the picture on from its own cells, as it does a map that ends. Only where at least
+// half of the screen's 32 x 24 tiles are drawn and at most 2% of the rest of the hardware map is: a map
+// with more than the screen in it is not one picture of one screen. `s`: written when true.
+inline bool HardwarePicture(melonDS::NDS& nds, int unitNum, const Wide2D::Layer& l, const Wide2D::BgVram& v, Wide2D::ChunkSource& s)
+{
+    const melonDS::GPU2D::Unit& unit = unitNum == 0 ? nds.GPU.GPU2D_A : nds.GPU.GPU2D_B;
+    const int W = l.mapW / 8, H = l.mapH / 8;
+    const int sx = (unit.BGXPos[l.num] & (l.mapW - 1)) >> 3, sy = (unit.BGYPos[l.num] & (l.mapH - 1)) >> 3;
+    int inFilled = 0, outFilled = 0, outTotal = 0;
+    for (int ty = 0; ty < H; ty++)
+        for (int tx = 0; tx < W; tx++)
+        {
+            const bool filled = (Wide2D::MapEntry(v, l, tx, ty) & 0x3FF) != 0;
+            if (((tx - sx) & (W - 1)) < 32 && ((ty - sy) & (H - 1)) < 24) inFilled += filled;
+            else
+            {
+                outTotal++;
+                outFilled += filled;
+            }
+        }
+    if (inFilled * 2 < 32 * 24 || outFilled * 50 > outTotal) return false;
+    // (Not a plain picture, one tile over much of it: the Nintendo logo on white. Carried on from its cells
+    // its letters came out beside the screen; plain, its own colour is carried on as before.)
+    {
+        static thread_local std::vector<uint16_t> seen;
+        seen.clear();
+        for (int ty = 0; ty < 24; ty++)
+            for (int tx = 0; tx < 32; tx++) seen.push_back(Wide2D::MapEntry(v, l, (sx + tx) & (W - 1), (sy + ty) & (H - 1)));
+        std::sort(seen.begin(), seen.end());
+        int most = 0;
+        for (size_t i = 0, j; i < seen.size(); i = j)
+        {
+            for (j = i; j < seen.size() && seen[j] == seen[i]; j++) {}
+            most = std::max(most, (int)(j - i));
+        }
+        if (most * 100 >= 32 * 24 * 40) return false;
+    }
+    // (Chunk numbers, 64 a row, at 0; the chunks' 9 entries each at 0x1000.)
+    static std::vector<uint8_t> bufs[4];
+    std::vector<uint8_t>& b = bufs[l.num];
+    b.assign(0x4000, 0);
+    auto put = [&](uint32_t a, uint16_t e) { memcpy(b.data() + a, &e, 2); };
+    const int CW = (W + 2) / 3, CH = (H + 2) / 3;
+    for (int cy = 0; cy < CH; cy++)
+        for (int cx = 0; cx < CW; cx++)
+        {
+            const int id = cx + cy * CW;
+            put((uint32_t)(cx + cy * 64) * 2, (uint16_t)id);
+            for (int k = 0; k < 9; k++)
+            {
+                const int tx = cx * 3 + k % 3, ty = cy * 3 + k / 3;
+                put(0x1000 + (uint32_t)(id * 9 + k) * 2, tx < W && ty < H ? Wide2D::MapEntry(v, l, tx, ty) : 0);
+            }
+        }
+    s = Wide2D::ChunkSource();
+    s.on = true;
+    s.ram = b.data();
+    s.mask = (uint32_t)b.size() - 1;
+    s.chunkMap = 0;
+    s.chunkTiles = 0x1000;
+    s.widthTiles = W;
+    s.heightTiles = H;
+    s.wrap = false;
+    s.originX = 0;
+    s.originY = 0;
+    s.renderer = 4 + l.num; // (not one of the game's: a picture of its own)
+    s.windowCol = kWindowCol;
+    s.windowCols = kWindowCols;
+    return true;
 }
 
 // The layers of engine `unitNum`'s screen that the game's maps account for: out[b] for background b
@@ -157,6 +234,13 @@ inline int Find(melonDS::NDS& nds, int unitNum, Wide2D::ChunkSource out[4], cons
             out[l.num] = keep;
             found++;
         }
+    // A picture of one screen that no map in RAM accounts for (HardwarePicture): the hardware map is
+    // the whole of it, and it is carried on beside the screen from its own cells.
+    for (int i = 0; i < n; i++)
+    {
+        const Wide2D::Layer& l = layers[i];
+        if (l.mapW == 512 && !out[l.num].on && HardwarePicture(nds, unitNum, l, v, out[l.num])) found++;
+    }
     return found;
 }
 
