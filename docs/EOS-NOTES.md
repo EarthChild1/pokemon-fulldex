@@ -393,3 +393,36 @@ page in the middle: the owner's symptom S1); the personality test the screen wit
 game's first screens"). In a dungeon (with the change
 made) and in ground mode the world fills the view (`Scene::wide`, a placed `WideImage`), and the top screen
 is a framed half-size panel in the top right corner while it has text or windows on it.
+
+## The PC build (Windows and Linux)
+
+Every place a DS game must be known to the PC all-games download (`tools/pc/build_all.sh`,
+`frontend/pc_launcher.cpp`), read on this branch. Black 2 (`IREO`) and Platinum (`CPUE`) for comparison.
+The PC and Android launchers are the same file (`pc_launcher.cpp`); none of the lines below is inside an
+`__ANDROID__` guard.
+
+| Place | Black 2 / Platinum | Explorers of Sky (`C2SE`) | Missing |
+|---|---|---|---|
+| Game list entry (`KnownGames`, launcher.h) | `IREO` "Pokemon Black 2", `black2.sav`; `CPUE` "Pokemon Platinum" | `C2SE` "Pokemon Mystery Dungeon: Explorers of Sky", `pmd-explorers-of-sky.sav` | none |
+| Reading the ROM (`ReadGame`) | known by its game code | the same, and `Game::generic` set (`IsGenericGame`, gamecode.h) | none |
+| Playable (`Playable`, pc_launcher.cpp) | needs `data/funcs/<code>.txt` | plays without a table (`g.generic`); with one, the table only names the game's modes | none |
+| Function table, made at build time | Black 2: `tools/bw2/funcmap.py` from pokebw2's symbols (`fetch_symbols`, pinned commit), `-` for the ROM; Platinum: `cp tools/platinum/CPUE.txt` (kept in the repository) | `cp tools/pmd/C2SE.txt` in both the PC and the Android scripts, as Platinum's: made by `tools/pmd/funcmap.py` from pmdsky-debug `80f28e0`, kept in the repository, so a build needs no network. Addresses and names only: an overlay function's first bytes are `?` (read from the player's ROM), the main program's `-` | none |
+| Table passed to the game (`Start`) | `--funcs data/funcs/<code>.txt` | the same where the table exists (it does in every package) | none |
+| Tables copied out of the APK (`ExtractFuncs`, Android only) | in the code list | in the code list | none |
+| Package content check (`check_contents`; the APK's) | in the allow-list | in both allow-lists | none |
+| Opening a ROM directly (`--rom`, `DirectRom::Ds`) | any known game | the same (`tests/test_direct_rom.cpp` has a `C2SE` case) | none |
+| Saves | `<saves>/black2.sav`, 512 KB | `<saves>/pmd-explorers-of-sky.sav`, 128 KB (`DsSaveBytes`, used by the saves page's size and health checks) | none |
+| Save states | the emulator's slots, the same for every DS game | the same | none |
+| Hub and Mover (Pokemon saves) | listed | left out (`g.generic`, `HubGames`) | the companion pages and Nuzlocke tracker: to check (task 2.5) |
+| Credits | pokebw2, aletheia, pokeplatinum | pmdsky-debug added (launcher's Credits page, `NOTICE`) | none |
+| `tools/pc/README.txt` ("It plays your own copies of:") | listed | not listed | a line (task 2.2) |
+| `README.md` Supported games | listed with platforms | "Android; Windows and Linux to come" | the platforms once tested (task 2.6) |
+
+**Screen size (phase 2, section 3: the developer's output, nothing invented).** Searched `pmd.h`,
+`pmdground.h`, `pmdwide.h`, `wide2d.h`, `widefill.h`, `generic_scene.h` and the branch's lines in `main.cpp`,
+`merged.h`, `layout.h` and `gpucompose.h` for fixed sizes, margin widths and aspects. None found: the only
+pixel numbers are the DS screen's own (256 x 192). The merged view's width comes from the developer's output
+size and `g_mergedAspect` (`viewWidth`); the margins are `(viewWidth - 256) / 2`; the dungeon's drawn-out
+columns are `min(12 * 8, (viewWidth - 256) / 2)` (12 columns are what the game's map holds beside the
+screen, enough for 20:9); the panel's size is a fraction of the DS screen (SECOND SCREEN SIZE). "20:9" and
+"16:9" appear only in comments. Nothing changed.
